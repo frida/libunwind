@@ -73,6 +73,39 @@ arm_exidx_step (struct cursor *c)
   return (c->dwarf.ip == 0) ? 0 : 1;
 }
 
+/* ANDROID support update. */
+
+/* When taking a step back up the stack, the pc will point to the next
+ * instruction to execute, not the currently executing instruction. This
+ * function adjusts the pc to the currently executing instruction.
+ */
+static void adjust_ip(struct cursor *c)
+{
+  unw_word_t ip, value;
+  ip = c->dwarf.ip;
+
+  if (ip)
+    {
+      int adjust = 4;
+      if (ip & 1)
+        {
+          /* Thumb instructions, the currently executing instruction could be
+          * 2 or 4 bytes, so adjust appropriately.
+          */
+          struct dwarf_loc ip_loc = DWARF_LOC (ip-5, 0);
+          if (dwarf_get(&c->dwarf, ip_loc, &value) >= 0)
+            {
+              if ((value & 0xe000f000) != 0xe000f000)
+                adjust = 2;
+            }
+          else
+            adjust = 2;
+        }
+      c->dwarf.ip -= adjust;
+    }
+}
+/* End of ANDROID update. */
+
 PROTECTED int
 unw_handle_signal_frame (unw_cursor_t *cursor)
 {
@@ -174,36 +207,32 @@ unw_step (unw_cursor_t *cursor)
 
   /* Check if this is a signal frame. */
   if (unw_is_signal_frame (cursor))
-     return unw_handle_signal_frame (cursor);
+    {
+      ret = unw_handle_signal_frame (cursor);
+    }
 
 #ifdef CONFIG_DEBUG_FRAME
   /* First, try DWARF-based unwinding. */
-  if (UNW_TRY_METHOD(UNW_ARM_METHOD_DWARF))
+  if (ret < 0 && UNW_TRY_METHOD(UNW_ARM_METHOD_DWARF))
     {
       ret = dwarf_step (&c->dwarf);
       Debug(1, "dwarf_step()=%d\n", ret);
 
       if (likely (ret > 0))
-	return 1;
+        ret = 1;
       else if (unlikely (ret == -UNW_ESTOPUNWIND))
-	return ret;
-
-    if (ret < 0 && ret != -UNW_ENOINFO)
-      {
-        Debug (2, "returning %d\n", ret);
-        return ret;
-      }
+        ret = 0;
     }
 #endif /* CONFIG_DEBUG_FRAME */
 
   /* Next, try extbl-based unwinding. */
-  if (UNW_TRY_METHOD (UNW_ARM_METHOD_EXIDX))
+  if (ret < 0 && UNW_TRY_METHOD (UNW_ARM_METHOD_EXIDX))
     {
       ret = arm_exidx_step (c);
       if (ret > 0)
-	return 1;
+	ret = 1;
       if (ret == -UNW_ESTOPUNWIND || ret == 0)
-	return ret;
+	ret = 0;
     }
 
   /* Fall back on APCS frame parsing.
@@ -266,5 +295,30 @@ unw_step (unw_cursor_t *cursor)
             }
         }
     }
-  return ret == -UNW_ENOINFO ? 0 : 1;
+
+  /* ANDROID support update. */
+  if (ret < 0 && UNW_TRY_METHOD(UNW_ARM_METHOD_LR) && c->dwarf.frame == 0)
+    {
+      /* If this is the first frame, the code may be executing garbage
+       * in the middle of nowhere. In this case, try using the lr as
+       * the pc.
+       */
+      unw_word_t lr;
+      if (dwarf_get(&c->dwarf, c->dwarf.loc[UNW_ARM_R14], &lr) >= 0)
+        {
+          if (lr != c->dwarf.ip)
+            {
+              ret = 1;
+              c->dwarf.ip = lr;
+            }
+        }
+    }
+  /* End of ANDROID update. */
+
+  if (ret >= 0)
+    {
+      c->dwarf.frame++;
+      adjust_ip(c);
+    }
+  return ret == -UNW_ENOINFO ? 0 : ret;
 }

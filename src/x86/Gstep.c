@@ -37,13 +37,7 @@ unw_step (unw_cursor_t *cursor)
   /* Try DWARF-based unwinding... */
   ret = dwarf_step (&c->dwarf);
 
-  if (ret < 0 && ret != -UNW_ENOINFO)
-    {
-      Debug (2, "returning %d\n", ret);
-      return ret;
-    }
-
-  if (unlikely (ret < 0))
+  if (ret < 0)
     {
       /* DWARF failed, let's see if we can follow the frame-chain
 	 or skip over the signal trampoline.  */
@@ -109,6 +103,18 @@ unw_step (unw_cursor_t *cursor)
       else
 	c->dwarf.ip = 0;
     }
+
+  /* ANDROID support update. */
+  if (ret >= 0)
+    {
+      if (c->dwarf.ip)
+        {
+          /* Adjust the pc to the instruction before. */
+          c->dwarf.ip--;
+        }
+      c->dwarf.frame++;
+    }
+  /* End of ANDROID update. */
   ret = (c->dwarf.ip == 0) ? 0 : 1;
   Debug (2, "returning %d\n", ret);
   return ret;

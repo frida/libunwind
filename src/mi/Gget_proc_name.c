@@ -104,3 +104,12 @@ unw_get_proc_name (unw_cursor_t *cursor, char *buf, size_t buf_len,
   return get_proc_name (tdep_get_as (c), tdep_get_ip (c), buf, buf_len, offp,
 			tdep_get_as_arg (c));
 }
+
+/* ANDROID support update. */
+PROTECTED int
+unw_get_proc_name_by_ip (unw_addr_space_t as, unw_word_t ip, char *buf,
+			 size_t buf_len, unw_word_t *offp, void *as_arg)
+{
+  return get_proc_name (as, ip, buf, buf_len, offp, as_arg);
+}
+/* End of ANDROID update. */
