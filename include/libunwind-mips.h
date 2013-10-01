@@ -30,7 +30,11 @@ extern "C" {
 #endif
 
 #include <inttypes.h>
+#if defined(__ANDROID__)
+#include <asm/sigcontext.h>
+#else
 #include <ucontext.h>
+#endif
 
 #ifdef mips
 # undef mips
@@ -129,6 +133,13 @@ unw_tdep_save_loc_t;
 
 /* On x86, we can directly use ucontext_t as the unwind context.  FIXME for
    MIPS.  */
+#if defined(__ANDROID__)
+typedef struct
+  {
+    struct sigcontext uc_mcontext;
+  }
+ucontext_t;
+#endif
 typedef ucontext_t unw_tdep_context_t;
 
 #include "libunwind-dynamic.h"

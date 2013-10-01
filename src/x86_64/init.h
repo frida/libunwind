@@ -84,6 +84,9 @@ common_init (struct cursor *c, unsigned use_prev_instr)
   c->dwarf.pi_is_dynamic = 0;
   c->dwarf.hint = 0;
   c->dwarf.prev_rs = 0;
+  /* ANDROID support update. */
+  c->dwarf.frame = 0;
+  /* End of ANDROID update. */
 
   return 0;
 }

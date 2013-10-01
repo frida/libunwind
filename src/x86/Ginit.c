@@ -75,7 +75,12 @@ get_dyn_info_list_addr (unw_addr_space_t as, unw_word_t *dyn_info_list_addr,
   return 0;
 }
 
+/* ANDROID support update. */
+#ifndef PAGE_SIZE
 #define PAGE_SIZE 4096
+#endif
+/* End of ANDROID update. */
+
 #define PAGE_START(a)	((a) & ~(PAGE_SIZE-1))
 
 /* Cache of already validated addresses */

@@ -32,7 +32,14 @@ extern "C" {
 
 #include <sys/types.h>
 #include <inttypes.h>
+#if defined(__ANDROID__)
+#include <asm/signal.h>
+#include <asm/sigcontext.h>
+#include <asm/ucontext.h>
+typedef struct ucontext ucontext_t;
+#else
 #include <ucontext.h>
+#endif
 
 #define UNW_TARGET	x86
 #define UNW_TARGET_X86	1

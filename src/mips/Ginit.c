@@ -45,9 +45,17 @@ static inline void *
 uc_addr (ucontext_t *uc, int reg)
 {
   if (reg >= UNW_MIPS_R0 && reg < UNW_MIPS_R0 + 32)
+#if defined(__ANDROID__)
+    return &uc->uc_mcontext.sc_regs[reg - UNW_MIPS_R0];
+#else
     return &uc->uc_mcontext.gregs[reg - UNW_MIPS_R0];
+#endif
   else if (reg == UNW_MIPS_PC)
+#if defined(__ANDROID__)
+    return &uc->uc_mcontext.sc_pc;
+#else
     return &uc->uc_mcontext.pc;
+#endif
   else
     return NULL;
 }
