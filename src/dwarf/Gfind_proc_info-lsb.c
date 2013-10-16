@@ -272,11 +272,21 @@ locate_debug_info (unw_addr_space_t as, unw_word_t addr, const char *dlname,
 		   unw_word_t start, unw_word_t end)
 {
   struct unw_debug_frame_list *w, *fdesc = 0;
-  char path[PATH_MAX];
-  char *name = path;
   int err;
   char *buf;
   size_t bufsize;
+#if defined(CONSERVE_STACK)
+  char *path = (char*)malloc(PATH_MAX);
+#else
+  char path[PATH_MAX];
+#endif
+  char *name = path;
+
+#if defined(CONSERVE_STACK)
+  if (path == NULL) {
+    return NULL;
+  }
+#endif
 
   /* First, see if we loaded this frame already.  */
 
@@ -292,11 +302,14 @@ locate_debug_info (unw_addr_space_t as, unw_word_t addr, const char *dlname,
 
   if (strcmp (dlname, "") == 0)
     {
-      err = find_binary_for_address (addr, name, sizeof(path));
+      err = find_binary_for_address (addr, name, PATH_MAX);
       if (err)
         {
 	  Debug (15, "tried to locate binary for 0x%" PRIx64 ", but no luck\n",
 		 (uint64_t) addr);
+#if defined(CONSERVE_STACK)
+          free(path);
+#endif
           return 0;
 	}
     }
@@ -319,6 +332,9 @@ locate_debug_info (unw_addr_space_t as, unw_word_t addr, const char *dlname,
       as->debug_frames = fdesc;
     }
   
+#if defined(CONSERVE_STACK)
+  free(path);
+#endif
   return fdesc;
 }
 
