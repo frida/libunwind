@@ -33,6 +33,10 @@ esac
 
 CHECK_ATOMIC_OPS
 
+# ANDROID support update.
+CHECK_ANDROID
+# End of ANDROID update.
+
 dnl Checks for header files.
 AC_HEADER_STDC
 AC_CHECK_HEADERS(asm/ptrace_offsets.h endian.h sys/endian.h execinfo.h \
