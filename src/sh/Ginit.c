@@ -85,13 +85,33 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
 {
   if (write)
     {
-      Debug (16, "mem[%x] <- %x\n", addr, *val);
-      *(unw_word_t *) addr = *val;
+      /* ANDROID support update. */
+      if (maps_is_writable(as->map_list, addr))
+        {
+          Debug (16, "mem[%x] <- %x\n", addr, *val);
+          *(unw_word_t *) addr = *val;
+        }
+      else
+        {
+          Debug (16, "Unwritable memory mem[%x] <- %x\n", addr, *val);
+          return -1;
+        }
+      /* End of ANDROID update. */
     }
   else
     {
-      *val = *(unw_word_t *) addr;
-      Debug (16, "mem[%x] -> %x\n", addr, *val);
+      /* ANDROID support update. */
+      if (maps_is_readable(as->map_list, addr))
+        {
+          *val = *(unw_word_t *) addr;
+          Debug (16, "mem[%x] -> %x\n", addr, *val);
+        }
+      else
+        {
+          Debug (16, "Unreadable memory mem[%x] -> XXX\n", addr);
+          return -1;
+        }
+      /* End of ANDROID update. */
     }
   return 0;
 }
@@ -167,6 +187,11 @@ get_static_proc_name (unw_addr_space_t as, unw_word_t ip,
   return _Uelf32_get_proc_name (as, getpid (), ip, buf, buf_len, offp);
 }
 
+/* ANDROID support update. */
+static define_lock (_U_map_init_lock);
+static struct map_info *_U_map_list = NULL;
+/* End of ANDROID update. */
+
 HIDDEN void
 sh_local_addr_space_init (void)
 {
@@ -181,6 +206,16 @@ sh_local_addr_space_init (void)
   local_addr_space.acc.resume = sh_local_resume;
   local_addr_space.acc.get_proc_name = get_static_proc_name;
   unw_flush_cache (&local_addr_space, 0, 0);
+
+  /* ANDROID support update. */
+  mutex_lock (&_U_map_init_lock);
+  if (_U_map_list == NULL)
+    {
+      _U_map_list = maps_create_list(getpid());
+    }
+  mutex_unlock (&_U_map_init_lock);
+  local_addr_space.map_list = _U_map_list;
+  /* End of ANDROID update. */
 }
 
 #endif /* !UNW_REMOTE_ONLY */

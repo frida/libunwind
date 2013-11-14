@@ -114,13 +114,33 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
 {
   if (write)
     {
-      Debug (12, "mem[%lx] <- %lx\n", addr, *val);
-      *(unw_word_t *) addr = *val;
+      /* ANDROID support update. */
+      if (maps_is_writable(as->map_list, addr))
+        {
+          Debug (12, "mem[%lx] <- %lx\n", addr, *val);
+          *(unw_word_t *) addr = *val;
+        }
+      else
+        {
+          Debug (12, "Unwritable memory mem[%lx] <- %lx\n", addr, *val);
+          return -1;
+        }
+      /* End of ANDROID update. */
     }
   else
     {
-      *val = *(unw_word_t *) addr;
-      Debug (12, "mem[%lx] -> %lx\n", addr, *val);
+      /* ANDROID support update. */
+      if (maps_is_readable(as->map_list, addr))
+        {
+          *val = *(unw_word_t *) addr;
+          Debug (12, "mem[%lx] -> %lx\n", addr, *val);
+        }
+      else
+        {
+          Debug (12, "Unreadable memory mem[%lx] -> XXX\n", addr);
+          return -1;
+        }
+      /* End of ANDROID update. */
     }
   return 0;
 }

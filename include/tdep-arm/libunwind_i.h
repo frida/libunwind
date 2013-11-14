@@ -32,6 +32,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <libunwind.h>
 
 #include "elf32.h"
+/* ANDROID support update. */
+#include "map_info.h"
+/* End of ANDROID update. */
 #include "mempool.h"
 #include "dwarf.h"
 #include "ex_tables.h"
@@ -56,6 +59,9 @@ struct unw_addr_space
     unw_word_t dyn_info_list_addr;	/* (cached) dyn_info_list_addr */
     struct dwarf_rs_cache global_cache;
     struct unw_debug_frame_list *debug_frames;
+    /* ANDROID support update. */
+    struct map_info *map_list;
+    /* End of ANDROID update. */
   };
 
 struct cursor

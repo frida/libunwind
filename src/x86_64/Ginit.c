@@ -160,8 +160,18 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
 {
   if (unlikely (write))
     {
-      Debug (16, "mem[%016lx] <- %lx\n", addr, *val);
-      *(unw_word_t *) addr = *val;
+      /* ANDROID support update. */
+      if (maps_is_writable(as->map_list, addr))
+        {
+          Debug (16, "mem[%016lx] <- %lx\n", addr, *val);
+          *(unw_word_t *) addr = *val;
+        }
+      else
+        {
+          Debug (16, "Unwritable memory mem[%016lx] <- %lx\n", addr, *val);
+          return -1;
+        }
+      /* End of ANDROID update. */
     }
   else
     {
@@ -170,8 +180,19 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
       if (likely (c != NULL) && unlikely (c->validate)
           && unlikely (validate_mem (addr)))
         return -1;
-      *val = *(unw_word_t *) addr;
-      Debug (16, "mem[%016lx] -> %lx\n", addr, *val);
+
+      /* ANDROID support update. */
+      if (maps_is_readable(as->map_list, addr))
+        {
+          *val = *(unw_word_t *) addr;
+          Debug (16, "mem[%016lx] -> %lx\n", addr, *val);
+        }
+      else
+        {
+          Debug (16, "Unreadable memory mem[%016lx] -> XXX\n", addr);
+          return -1;
+        }
+      /* End of ANDROID update. */
     }
   return 0;
 }
@@ -247,6 +268,11 @@ get_static_proc_name (unw_addr_space_t as, unw_word_t ip,
   return _Uelf64_get_proc_name (as, getpid (), ip, buf, buf_len, offp);
 }
 
+/* ANDROID support update. */
+static define_lock (_U_map_init_lock);
+static struct map_info *_U_map_list = NULL;
+/* End of ANDROID update. */
+
 HIDDEN void
 x86_64_local_addr_space_init (void)
 {
@@ -264,6 +290,16 @@ x86_64_local_addr_space_init (void)
 
   memset (last_good_addr, 0, sizeof (unw_word_t) * NLGA);
   lga_victim = 0;
+
+  /* ANDROID support update. */
+  mutex_lock (&_U_map_init_lock);
+  if (_U_map_list == NULL)
+    {
+      _U_map_list = maps_create_list(getpid());
+    }
+  mutex_unlock (&_U_map_init_lock);
+  local_addr_space.map_list = _U_map_list;
+  /* End of ANDROID update. */
 }
 
 #endif /* !UNW_REMOTE_ONLY */

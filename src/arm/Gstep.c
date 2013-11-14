@@ -92,13 +92,16 @@ static void adjust_ip(struct cursor *c)
           /* Thumb instructions, the currently executing instruction could be
           * 2 or 4 bytes, so adjust appropriately.
           */
-          struct dwarf_loc ip_loc = DWARF_LOC (ip-5, 0);
-          if (dwarf_get(&c->dwarf, ip_loc, &value) >= 0)
-            {
-              if ((value & 0xe000f000) != 0xe000f000)
-                adjust = 2;
-            }
-          else
+          unw_addr_space_t as;
+          unw_accessors_t *a;
+          void *arg;
+
+          as = c->dwarf.as;
+          a = unw_get_accessors (as);
+          arg = c->dwarf.as_arg;
+
+          if (ip >= 5 && (*a->access_mem) (as, ip-5, &value, 0, arg) < 0 ||
+              (value & 0xe000f000) != 0xe000f000)
             adjust = 2;
         }
       c->dwarf.ip -= adjust;

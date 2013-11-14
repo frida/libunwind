@@ -27,7 +27,66 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <stdio.h>
 
 #include "libunwind_i.h"
+#include "map_info.h"
 #include "os-linux.h"
+
+struct map_info *
+maps_create_list(pid_t pid)
+{
+  struct map_iterator mi;
+  unsigned long start, end, offset, flags;
+  struct map_info *map_list = NULL;
+  struct map_info *cur_map;
+
+  if (maps_init (&mi, pid) < 0)
+    return NULL;
+
+  while (maps_next (&mi, &start, &end, &offset, &flags))
+    {
+      cur_map = (struct map_info *)malloc(sizeof(struct map_info));
+      if (cur_map == NULL)
+        break;
+      cur_map->next = map_list;
+      cur_map->start = start;
+      cur_map->end = end;
+      cur_map->offset = offset;
+      cur_map->flags = flags;
+
+      map_list = cur_map;
+    }
+
+  maps_close (&mi);
+
+  return map_list;
+}
+
+static struct map_info *
+get_map(struct map_info *map_list, unw_word_t addr)
+{
+  while (map_list)
+    {
+      if (addr >= map_list->start && addr < map_list->end)
+        return map_list;
+      map_list = map_list->next;
+    }
+  return NULL;
+}
+
+int maps_is_readable(struct map_info *map_list, unw_word_t addr)
+{
+  struct map_info *map = get_map(map_list, addr);
+  if (map != NULL)
+    return map->flags & PROT_READ;
+  return 0;
+}
+
+int maps_is_writable(struct map_info *map_list, unw_word_t addr)
+{
+  struct map_info *map = get_map(map_list, addr);
+  if (map != NULL)
+    return map->flags & PROT_WRITE;
+  return 0;
+}
 
 PROTECTED int
 tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
@@ -41,7 +100,7 @@ tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
   if (maps_init (&mi, pid) < 0)
     return -1;
 
-  while (maps_next (&mi, segbase, &hi, mapoff))
+  while (maps_next (&mi, segbase, &hi, mapoff, NULL))
     if (ip >= *segbase && ip < hi)
       {
 	found = 1;
