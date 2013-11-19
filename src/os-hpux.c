@@ -65,3 +65,19 @@ tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
 
   return elf_map_image (ei, path);
 }
+
+struct map_info *
+maps_create_list(pid_t pid)
+{
+  return NULL;
+}
+
+int maps_is_readable(struct map_info *map_list, unw_word_t addr)
+{
+  return true;
+}
+
+int maps_is_writable(struct map_info *map_list, unw_word_t addr)
+{
+  return true;
+}

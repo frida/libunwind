@@ -30,6 +30,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
    to be shared with target-independent code.  */
 
 #include "elf64.h"
+/* ANDROID support update. */
+#include "map_info.h"
+/* End of ANDROID update. */
 #include "mempool.h"
 
 typedef struct
@@ -109,6 +112,10 @@ struct unw_addr_space
 #endif
 
     struct ia64_script_cache global_cache;
+
+    /* ANDROID support update. */
+    struct map_info *map_list;
+    /* End of ANDROID update. */
    };
 
 /* Note: The ABI numbers in the ABI-markers (.unwabi directive) are

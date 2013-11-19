@@ -43,6 +43,11 @@ unw_init_local (unw_cursor_t *cursor, ucontext_t *uc)
 
 #else /* !UNW_REMOTE_ONLY */
 
+/* ANDROID support update. */
+static define_lock (_U_map_init_lock);
+static struct map_info *_U_map_list = NULL;
+/* End of ANDROID update. */
+
 PROTECTED int
 unw_init_local (unw_cursor_t *cursor, ucontext_t *uc)
 {
@@ -60,6 +65,16 @@ unw_init_local (unw_cursor_t *cursor, ucontext_t *uc)
   #else
     return common_init_ppc32 (c, 1);
   #endif
+
+  /* ANDROID support update. */
+  mutex_lock (&_U_map_init_lock);
+  if (_U_map_list == NULL)
+    {
+      _U_map_list = maps_create_list(getpid());
+    }
+  mutex_unlock (&_U_map_init_lock);
+  local_addr_space.map_list = _U_map_list;
+  /* End of ANDROID update. */
 }
 
 #endif /* !UNW_REMOTE_ONLY */
