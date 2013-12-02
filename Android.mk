@@ -180,6 +180,9 @@ endif  # x86
 LOCAL_SHARED_LIBRARIES := \
 	libdl \
 
+LOCAL_ADDITIONAL_DEPENDENCIES := \
+	$(LOCAL_PATH)/Android.mk \
+
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -207,5 +210,8 @@ LOCAL_SRC_FILES += \
 
 LOCAL_SHARED_LIBRARIES := \
 	libunwind \
+
+LOCAL_ADDITIONAL_DEPENDENCIES := \
+	$(LOCAL_PATH)/Android.mk \
 
 include $(BUILD_SHARED_LIBRARY)
