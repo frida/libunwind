@@ -6,6 +6,15 @@ libunwind_cflags := \
 	-D_GNU_SOURCE \
 	-Wno-unused-parameter \
 
+# For debug build it is required:
+#  1. Enable flags below
+#  2. On runtime export UNW_DEBUG_LEVEL=x where x controls verbosity (from 1 to 20)
+#libunwind_cflags := \
+	-DHAVE_CONFIG_H \
+	-DDEBUG \
+	-D_GNU_SOURCE \
+	-U_FORTIFY_SOURCE
+
 libunwind_includes := \
 	$(LOCAL_PATH)/src \
 	$(LOCAL_PATH)/include \
@@ -14,7 +23,7 @@ define libunwind-arch
 $(if $(filter arm64,$(1)),aarch64,$(1))
 endef
 
-libunwind_arches := arm arm64 mips x86
+libunwind_arches := arm arm64 mips x86 x86_64
 
 include $(CLEAR_VARS)
 
@@ -78,6 +87,7 @@ LOCAL_SRC_FILES := \
 
 # 64-bit architectures
 LOCAL_SRC_FILES_arm64 += src/elf64.c
+LOCAL_SRC_FILES_x86_64 += src/elf64.c
 
 # 32-bit architectures
 LOCAL_SRC_FILES_arm   += src/elf32.c
@@ -132,6 +142,16 @@ LOCAL_SRC_FILES_x86 += \
 	src/x86/getcontext-linux.S \
 	src/x86/Gos-linux.c \
 	src/x86/Los-linux.c \
+
+LOCAL_SRC_FILES_x86_64 += \
+	src/x86_64/getcontext.S \
+	src/x86_64/Gstash_frame.c \
+	src/x86_64/Gtrace.c \
+	src/x86_64/Gos-linux.c \
+	src/x86_64/Lstash_frame.c \
+	src/x86_64/Ltrace.c \
+	src/x86_64/Los-linux.c \
+	src/x86_64/setcontext.S \
 
 LOCAL_SHARED_LIBRARIES := \
 	libdl \

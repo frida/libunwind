@@ -223,6 +223,11 @@ unw_step (unw_cursor_t *cursor)
       if (c->dwarf.ip == prev_ip && c->dwarf.cfa == prev_cfa)
 	return -UNW_EBADFRAME;
     }
+  /* ANDROID support update. */
+  /* Adjust the pc to the instruction before. */
+  if (c->dwarf.ip)
+    c->dwarf.ip--;
+  /* End of ANDROID update. */
   Debug (2, "returning %d\n", ret);
   return ret;
 }
