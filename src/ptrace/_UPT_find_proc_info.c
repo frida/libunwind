@@ -35,12 +35,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 static int
 get_unwind_info (struct elf_dyn_info *edi, pid_t pid, unw_addr_space_t as, unw_word_t ip)
 {
-  unsigned long segbase, mapoff;
-#if defined(CONSERVE_STACK)
-  char *path;
-#else
-  char path[PATH_MAX];
-#endif
+  /* ANDROID support update. */
+  struct map_info *map;
+  /* End of ANDROID update. */
 
 #if UNW_TARGET_IA64 && defined(__linux)
   if (!edi->ktab.start_ip && _Uia64_get_kernel_table (&edi->ktab) < 0)
@@ -62,33 +59,14 @@ get_unwind_info (struct elf_dyn_info *edi, pid_t pid, unw_addr_space_t as, unw_w
 
   invalidate_edi(edi);
 
-#if defined(CONSERVE_STACK)
-  path = (char*)malloc(PATH_MAX);
-  if (path == NULL)
-    return -UNW_ENOMEM;
-#endif
-  if (tdep_get_elf_image (&edi->ei, pid, ip, &segbase, &mapoff, path,
-                          PATH_MAX) < 0)
-    {
-#if defined(CONSERVE_STACK)
-      free(path);
-#endif
-      return -UNW_ENOINFO;
-    }
+  /* ANDROID support update. */
+  map = tdep_get_elf_image (as, pid, ip);
+  if (map == NULL)
+    return -UNW_ENOINFO;
 
-  /* Here, SEGBASE is the starting-address of the (mmap'ped) segment
-     which covers the IP we're looking for.  */
-  if (tdep_find_unwind_table (edi, as, path, segbase, mapoff, ip) < 0)
-    {
-#if defined(CONSERVE_STACK)
-      free(path);
-#endif
-      return -UNW_ENOINFO;
-    }
-
-#if defined(CONSERVE_STACK)
-  free(path);
-#endif
+  if (tdep_find_unwind_table (edi, &map->ei, as, map->path, map->start, map->offset, ip) < 0)
+    return -UNW_ENOINFO;
+  /* End of ANDROID update. */
 
   /* This can happen in corner cases where dynamically generated
      code falls into the same page that contains the data-segment

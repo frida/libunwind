@@ -297,7 +297,9 @@ struct elf_image
 
 struct elf_dyn_info
   {
-    struct elf_image ei;
+    /* ANDROID support update.*/
+    /* Removed: struct elf_image ei; */
+    /* End of ANDROID update. */
     unw_dyn_info_t di_cache;
     unw_dyn_info_t di_debug;    /* additional table info for .debug_frame */
 #if UNW_TARGET_IA64
@@ -310,8 +312,10 @@ struct elf_dyn_info
 
 static inline void invalidate_edi (struct elf_dyn_info *edi)
 {
-  if (edi->ei.image)
-    munmap (edi->ei.image, edi->ei.size);
+  /* ANDROID support update.*/
+  /* Removed: if (edi->ei.image) */
+  /*            munmap (edi->ei.image, edi->ei.size); */
+  /* End of ANDROID update. */
   memset (edi, 0, sizeof (*edi));
   edi->di_cache.format = -1;
   edi->di_debug.format = -1;

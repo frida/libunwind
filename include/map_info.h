@@ -31,6 +31,9 @@ struct map_info
     uintptr_t end;
     uintptr_t offset;
     int flags;
+    char *path;
+    struct elf_image ei;
+
     struct map_info *next;
   };
 
@@ -39,5 +42,7 @@ int maps_is_readable(struct map_info *map_list, unw_word_t addr);
 int maps_is_writable(struct map_info *map_list, unw_word_t addr);
 
 struct map_info *maps_create_list(pid_t pid);
+
+void maps_destroy_list(struct map_info *map_info);
 
 #endif /* map_info_h */

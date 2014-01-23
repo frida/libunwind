@@ -30,6 +30,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "map_info.h"
 #include "os-linux.h"
 
+/* ANDROID support update. */
 struct map_info *
 maps_create_list(pid_t pid)
 {
@@ -51,6 +52,9 @@ maps_create_list(pid_t pid)
       cur_map->end = end;
       cur_map->offset = offset;
       cur_map->flags = flags;
+      cur_map->path = strdup(mi.path);
+      cur_map->ei.size = 0;
+      cur_map->ei.image = NULL;
 
       map_list = cur_map;
     }
@@ -58,6 +62,22 @@ maps_create_list(pid_t pid)
   maps_close (&mi);
 
   return map_list;
+}
+
+void
+maps_destroy_list(struct map_info *map_info)
+{
+  struct map_info *map;
+  while (map_info)
+    {
+      map = map_info;
+      map_info = map->next;
+      if (map->ei.image != MAP_FAILED && map->ei.image != NULL)
+        munmap(map->ei.image, map->ei.size);
+      if (map->path)
+        free(map->path);
+      free(map);
+    }
 }
 
 static struct map_info *
@@ -74,6 +94,9 @@ get_map(struct map_info *map_list, unw_word_t addr)
 
 int maps_is_readable(struct map_info *map_list, unw_word_t addr)
 {
+  /* If there is no map, assume everything is okay. */
+  if (map_list == NULL)
+    return 1;
   struct map_info *map = get_map(map_list, addr);
   if (map != NULL)
     return map->flags & PROT_READ;
@@ -82,41 +105,44 @@ int maps_is_readable(struct map_info *map_list, unw_word_t addr)
 
 int maps_is_writable(struct map_info *map_list, unw_word_t addr)
 {
+  /* If there is no map, assume everything is okay. */
+  if (map_list == NULL)
+    return 1;
   struct map_info *map = get_map(map_list, addr);
   if (map != NULL)
     return map->flags & PROT_WRITE;
   return 0;
 }
+/* End of ANDROID update. */
 
-PROTECTED int
-tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
-		    unsigned long *segbase, unsigned long *mapoff,
-		    char *path, size_t pathlen)
+PROTECTED struct map_info*
+tdep_get_elf_image(unw_addr_space_t as, pid_t pid, unw_word_t ip)
 {
-  struct map_iterator mi;
-  int found = 0, rc;
-  unsigned long hi;
+  /* ANDROID support update. */
+  struct map_info *map;
 
-  if (maps_init (&mi, pid) < 0)
-    return -1;
+  if (as->map_list == NULL)
+    as->map_list = maps_create_list(pid);
 
-  while (maps_next (&mi, segbase, &hi, mapoff, NULL))
-    if (ip >= *segbase && ip < hi)
-      {
-	found = 1;
-	break;
-      }
-
-  if (!found)
+  map = as->map_list;
+  while (map)
     {
-      maps_close (&mi);
-      return -1;
+      if (ip >= map->start && ip < map->end)
+        break;
+      map = map->next;
     }
-  if (path)
+  if (!map)
+    return NULL;
+
+  if (map->ei.image == NULL)
     {
-      strncpy(path, mi.path, pathlen);
+      int ret = elf_map_image(&map->ei, map->path);
+      if (ret < 0)
+        {
+          map->ei.image = NULL;
+          return NULL;
+        }
     }
-  rc = elf_map_image (ei, mi.path);
-  maps_close (&mi);
-  return rc;
+  /* End of ANDROID update. */
+  return map;
 }

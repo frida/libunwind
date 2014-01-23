@@ -1,7 +1,5 @@
 /* libunwind - a platform-independent unwind library
-
-   Copied from src/x86_64/, modified slightly (or made empty stubs) for
-   building frysk successfully on ppc64, by Wu Zhou <woodzltc@cn.ibm.com>
+   Copyright (C) 2014 The Android Open Source Project
 
 This file is part of libunwind.
 
@@ -24,42 +22,51 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
-#include <libunwind_i.h>
+#include "libunwind_i.h"
 
-#ifdef UNW_TARGET_PPC64
-#include "../ppc64/init.h"
-#else
-#include "../ppc32/init.h"
-#endif
-
-#ifdef UNW_REMOTE_ONLY
-
-PROTECTED int
-unw_init_local (unw_cursor_t *cursor, ucontext_t *uc)
+PROTECTED void
+unw_map_set (unw_addr_space_t as, unw_map_cursor_t *map_cursor)
 {
-  /* XXX: empty stub.  */
-  return -UNW_EINVAL;
+  if (map_cursor != NULL)
+    as->map_list = map_cursor->map_list;
+  else
+    as->map_list = NULL;
 }
 
-#else /* !UNW_REMOTE_ONLY */
-
 PROTECTED int
-unw_init_local (unw_cursor_t *cursor, ucontext_t *uc)
+unw_map_cursor_create (unw_map_cursor_t *map_cursor, pid_t pid)
 {
-  struct cursor *c = (struct cursor *) cursor;
+  map_cursor->map_list = maps_create_list (pid);
 
-  if (!tdep_init_done)
-    tdep_init ();
-
-  Debug (1, "(cursor=%p)\n", c);
-
-  c->dwarf.as = unw_local_addr_space;
-  c->dwarf.as_arg = uc;
-  #ifdef UNW_TARGET_PPC64
-    return common_init_ppc64 (c, 1);
-  #else
-    return common_init_ppc32 (c, 1);
-  #endif
+  return map_cursor->map_list == NULL;
 }
 
-#endif /* !UNW_REMOTE_ONLY */
+PROTECTED void
+unw_map_cursor_destroy (unw_map_cursor_t *map_cursor)
+{
+  maps_destroy_list (map_cursor->map_list);
+}
+
+PROTECTED void
+unw_map_cursor_reset (unw_map_cursor_t *map_cursor)
+{
+  map_cursor->cur_map = map_cursor->map_list;
+}
+
+PROTECTED int
+unw_map_cursor_get (unw_map_cursor_t *map_cursor, unw_map_t *unw_map)
+{
+  struct map_info *map_info = map_cursor->cur_map;
+
+  if (map_info == NULL)
+    return 0;
+
+  unw_map->start = map_info->start;
+  unw_map->end = map_info->end;
+  unw_map->flags = map_info->flags;
+  unw_map->path = map_info->path;
+
+  map_cursor->cur_map = map_info->next;
+
+  return 1;
+}

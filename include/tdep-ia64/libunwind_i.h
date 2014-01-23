@@ -267,9 +267,10 @@ extern void tdep_put_unwind_info (unw_addr_space_t as,
 				  unw_proc_info_t *pi, void *arg);
 extern void *tdep_uc_addr (ucontext_t *uc, unw_regnum_t regnum,
 			   uint8_t *nat_bitnr);
-extern int tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
-			       unsigned long *segbase, unsigned long *mapoff,
-			       char *path, size_t pathlen);
+/* ANDROID support update. */
+extern struct map_info *tdep_get_elf_image (unw_addr_space_t as, pid_t pid,
+					    unw_word_t ip);
+/* End of ANDROID update. */
 extern int tdep_access_reg (struct cursor *c, unw_regnum_t reg,
 			    unw_word_t *valp, int write);
 extern int tdep_access_fpreg (struct cursor *c, unw_regnum_t reg,

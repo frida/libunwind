@@ -340,22 +340,19 @@ elf_w (get_proc_name_in_image) (unw_addr_space_t as, struct elf_image *ei,
   return ret;
 }
 
+/* ANDROID support update. */
 HIDDEN int
 elf_w (get_proc_name) (unw_addr_space_t as, pid_t pid, unw_word_t ip,
 		       char *buf, size_t buf_len, unw_word_t *offp)
 {
-  unsigned long segbase, mapoff;
-  struct elf_image ei;
   int ret;
+  struct map_info *map = tdep_get_elf_image (as, pid, ip);
 
-  ret = tdep_get_elf_image (&ei, pid, ip, &segbase, &mapoff, NULL, 0);
-  if (ret < 0)
-    return ret;
+  if (map == NULL)
+    return -UNW_ENOINFO;
 
-  ret = elf_w (get_proc_name_in_image) (as, &ei, segbase, mapoff, ip, buf, buf_len, offp);
-
-  munmap (ei.image, ei.size);
-  ei.image = NULL;
+  ret = elf_w (get_proc_name_in_image) (as, &map->ei, map->start, map->offset, ip, buf, buf_len, offp);
 
   return ret;
 }
+/* ANDROID support update. */

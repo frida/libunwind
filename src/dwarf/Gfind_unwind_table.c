@@ -33,10 +33,12 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "dwarf-eh.h"
 #include "dwarf_i.h"
 
+/* ANDROID support update. */
 int
-dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
-			 char *path, unw_word_t segbase, unw_word_t mapoff,
-			 unw_word_t ip)
+dwarf_find_unwind_table (struct elf_dyn_info *edi, struct elf_image *ei,
+			 unw_addr_space_t as, char *path,
+			 unw_word_t segbase, unw_word_t mapoff, unw_word_t ip)
+/* End of ANDROID update. */
 {
   Elf_W(Phdr) *phdr, *ptxt = NULL, *peh_hdr = NULL, *pdyn = NULL;
   unw_word_t addr, eh_frame_start, fde_count, load_base;
@@ -54,11 +56,15 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
 
   /* XXX: Much of this code is Linux/LSB-specific.  */
 
-  if (!elf_w(valid_object) (&edi->ei))
+  /* ANDROID support update. */
+  if (!elf_w(valid_object) (ei))
+  /* End of ANDROID update. */
     return -UNW_ENOINFO;
 
-  ehdr = edi->ei.image;
-  phdr = (Elf_W(Phdr) *) ((char *) edi->ei.image + ehdr->e_phoff);
+  /* ANDROID support update. */
+  ehdr = ei->image;
+  phdr = (Elf_W(Phdr) *) ((char *) ei->image + ehdr->e_phoff);
+  /* End of ANDROID update. */
 
   for (i = 0; i < ehdr->e_phnum; ++i)
     {
@@ -73,9 +79,12 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
 
 	  if (phdr[i].p_offset == mapoff)
 	    ptxt = phdr + i;
-	  if ((uintptr_t) edi->ei.image + phdr->p_filesz > max_load_addr)
-	    max_load_addr = (uintptr_t) edi->ei.image + phdr->p_filesz;
+
+          /* ANDROID support update. */
+	  if ((uintptr_t) ei->image + phdr->p_filesz > max_load_addr)
+	    max_load_addr = (uintptr_t) ei->image + phdr->p_filesz;
 	  break;
+          /* End of ANDROID update. */
 
 	case PT_GNU_EH_FRAME:
 	  peh_hdr = phdr + i;
@@ -110,8 +119,10 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
 	  /* For dynamicly linked executables and shared libraries,
 	     DT_PLTGOT is the value that data-relative addresses are
 	     relative to for that object.  We call this the "gp".  */
+		/* ANDROID support update. */
 		Elf_W(Dyn) *dyn = (Elf_W(Dyn) *)(pdyn->p_offset
-						 + (char *) edi->ei.image);
+						 + (char *) ei->image);
+		/* End of ANDROID update. */
 	  for (; dyn->d_tag != DT_NULL; ++dyn)
 	    if (dyn->d_tag == DT_PLTGOT)
 	      {
@@ -127,8 +138,10 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
 	   absolute.  */
 	edi->di_cache.gp = 0;
 
+      /* ANDROID support update. */
       hdr = (struct dwarf_eh_frame_hdr *) (peh_hdr->p_offset
-					   + (char *) edi->ei.image);
+					   + (char *) ei->image);
+      /* End of ANDROID update. */
       if (hdr->version != DW_EH_VERSION)
 	{
 	  Debug (1, "table `%s' has unexpected version %d\n",
@@ -193,14 +206,17 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
       /* two 32-bit values (ip_offset/fde_offset) per table-entry: */
       edi->di_cache.u.rti.table_len = (fde_count * 8) / sizeof (unw_word_t);
       edi->di_cache.u.rti.table_data = ((load_base + peh_hdr->p_vaddr)
-				       + (addr - (unw_word_t) edi->ei.image
+				       + (addr - (unw_word_t) ei->image
 					  - peh_hdr->p_offset));
 
       /* For the binary-search table in the eh_frame_hdr, data-relative
 	 means relative to the start of that section... */
+
+      /* ANDROID support update. */
       edi->di_cache.u.rti.segbase = ((load_base + peh_hdr->p_vaddr)
-				    + ((unw_word_t) hdr - (unw_word_t) edi->ei.image
+				    + ((unw_word_t) hdr - (unw_word_t) ei->image
 				       - peh_hdr->p_offset));
+      /* End of ANDROID update. */
       found = 1;
     }
 
