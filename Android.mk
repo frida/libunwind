@@ -6,16 +6,15 @@ libunwind_cflags := \
 	-D_GNU_SOURCE \
 	-Wno-unused-parameter \
 
-ifeq ($(TARGET_ARCH),arm64)
-LIBUNWIND_ARCH := aarch64
-else
-LIBUNWIND_ARCH := $(TARGET_ARCH)
-endif
-
 libunwind_includes := \
 	$(LOCAL_PATH)/src \
 	$(LOCAL_PATH)/include \
-	$(LOCAL_PATH)/include/tdep-$(LIBUNWIND_ARCH) \
+
+define libunwind-arch
+$(if $(filter arm64,$(1)),aarch64,$(1))
+endef
+
+libunwind_arches := arm arm64 mips x86
 
 include $(CLEAR_VARS)
 
@@ -23,6 +22,8 @@ LOCAL_MODULE := libunwind
 
 LOCAL_CFLAGS += $(libunwind_cflags)
 LOCAL_C_INCLUDES := $(libunwind_includes)
+$(foreach arch,$(libunwind_arches), \
+  $(eval LOCAL_C_INCLUDES_$(arch) := $(LOCAL_PATH)/include/tdep-$(call libunwind-arch,$(arch))))
 
 LOCAL_SRC_FILES := \
 	src/mi/init.c \
@@ -75,71 +76,62 @@ LOCAL_SRC_FILES := \
 	src/dwarf/global.c \
 	src/os-linux.c \
 
-ifeq ($(TARGET_IS_64_BIT),true)
-LOCAL_SRC_FILES += \
-	src/elf64.c
-else
-LOCAL_SRC_FILES += \
-	src/elf32.c
-endif
+# 64-bit architectures
+LOCAL_SRC_FILES_arm64 += src/elf64.c
+
+# 32-bit architectures
+LOCAL_SRC_FILES_arm   += src/elf32.c
+LOCAL_SRC_FILES_mips  += src/elf32.c
+LOCAL_SRC_FILES_x86   += src/elf32.c
 
 # Arch specific source files.
-LOCAL_SRC_FILES += \
-	src/$(LIBUNWIND_ARCH)/is_fpreg.c \
-	src/$(LIBUNWIND_ARCH)/regname.c \
-	src/$(LIBUNWIND_ARCH)/Gcreate_addr_space.c \
-	src/$(LIBUNWIND_ARCH)/Gget_proc_info.c \
-	src/$(LIBUNWIND_ARCH)/Gget_save_loc.c \
-	src/$(LIBUNWIND_ARCH)/Gglobal.c \
-	src/$(LIBUNWIND_ARCH)/Ginit.c \
-	src/$(LIBUNWIND_ARCH)/Ginit_local.c \
-	src/$(LIBUNWIND_ARCH)/Ginit_remote.c \
-	src/$(LIBUNWIND_ARCH)/Gregs.c \
-	src/$(LIBUNWIND_ARCH)/Gresume.c \
-	src/$(LIBUNWIND_ARCH)/Gstep.c \
-	src/$(LIBUNWIND_ARCH)/Lcreate_addr_space.c \
-	src/$(LIBUNWIND_ARCH)/Lget_proc_info.c \
-	src/$(LIBUNWIND_ARCH)/Lget_save_loc.c \
-	src/$(LIBUNWIND_ARCH)/Lglobal.c \
-	src/$(LIBUNWIND_ARCH)/Linit.c \
-	src/$(LIBUNWIND_ARCH)/Linit_local.c \
-	src/$(LIBUNWIND_ARCH)/Linit_remote.c \
-	src/$(LIBUNWIND_ARCH)/Lregs.c \
-	src/$(LIBUNWIND_ARCH)/Lresume.c \
-	src/$(LIBUNWIND_ARCH)/Lstep.c \
+$(foreach arch,$(libunwind_arches), \
+  $(eval LOCAL_SRC_FILES_$(arch) += \
+	src/$(call libunwind-arch,$(arch))/is_fpreg.c \
+	src/$(call libunwind-arch,$(arch))/regname.c \
+	src/$(call libunwind-arch,$(arch))/Gcreate_addr_space.c \
+	src/$(call libunwind-arch,$(arch))/Gget_proc_info.c \
+	src/$(call libunwind-arch,$(arch))/Gget_save_loc.c \
+	src/$(call libunwind-arch,$(arch))/Gglobal.c \
+	src/$(call libunwind-arch,$(arch))/Ginit.c \
+	src/$(call libunwind-arch,$(arch))/Ginit_local.c \
+	src/$(call libunwind-arch,$(arch))/Ginit_remote.c \
+	src/$(call libunwind-arch,$(arch))/Gregs.c \
+	src/$(call libunwind-arch,$(arch))/Gresume.c \
+	src/$(call libunwind-arch,$(arch))/Gstep.c \
+	src/$(call libunwind-arch,$(arch))/Lcreate_addr_space.c \
+	src/$(call libunwind-arch,$(arch))/Lget_proc_info.c \
+	src/$(call libunwind-arch,$(arch))/Lget_save_loc.c \
+	src/$(call libunwind-arch,$(arch))/Lglobal.c \
+	src/$(call libunwind-arch,$(arch))/Linit.c \
+	src/$(call libunwind-arch,$(arch))/Linit_local.c \
+	src/$(call libunwind-arch,$(arch))/Linit_remote.c \
+	src/$(call libunwind-arch,$(arch))/Lregs.c \
+	src/$(call libunwind-arch,$(arch))/Lresume.c \
+	src/$(call libunwind-arch,$(arch))/Lstep.c \
+	))
 
-ifeq ($(LIBUNWIND_ARCH),arm)
-LOCAL_SRC_FILES += \
+LOCAL_SRC_FILES_arm += \
 	src/arm/getcontext.S \
 	src/arm/Gis_signal_frame.c \
 	src/arm/Gex_tables.c \
 	src/arm/Lis_signal_frame.c \
 	src/arm/Lex_tables.c \
 
-endif  # arm
-
-ifeq ($(LIBUNWIND_ARCH),aarch64)
-LOCAL_SRC_FILES += \
+LOCAL_SRC_FILES_arm64 += \
 	src/aarch64/Gis_signal_frame.c \
 	src/aarch64/Lis_signal_frame.c \
 
-endif  # arm64
-
-ifeq ($(LIBUNWIND_ARCH),mips)
-LOCAL_SRC_FILES += \
+LOCAL_SRC_FILES_mips += \
 	src/mips/getcontext-android.S \
 	src/mips/Gis_signal_frame.c \
 	src/mips/Lis_signal_frame.c \
 
-endif  # mips
 
-ifeq ($(LIBUNWIND_ARCH),x86)
-LOCAL_SRC_FILES += \
+LOCAL_SRC_FILES_x86 += \
 	src/x86/getcontext-linux.S \
 	src/x86/Gos-linux.c \
 	src/x86/Los-linux.c \
-
-endif  # x86
 
 LOCAL_SHARED_LIBRARIES := \
 	libdl \
@@ -155,6 +147,8 @@ LOCAL_MODULE := libunwind-ptrace
 
 LOCAL_CFLAGS += $(libunwind_cflags)
 LOCAL_C_INCLUDES := $(libunwind_includes)
+$(foreach arch,$(libunwind_arches), \
+  $(eval LOCAL_C_INCLUDES_$(arch) := $(LOCAL_PATH)/include/tdep-$(call libunwind-arch,$(arch))))
 
 # Files needed to trace running processes.
 LOCAL_SRC_FILES += \
