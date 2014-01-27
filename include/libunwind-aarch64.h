@@ -33,7 +33,16 @@ extern "C" {
 
 #include <inttypes.h>
 #include <stddef.h>
+/* ANDROID support update. */
+#if defined(__ANDROID__)
+#include <signal.h>
+#include <asm/sigcontext.h>
+#include <asm-generic/ucontext.h>
+typedef struct ucontext ucontext_t;
+#else
 #include <ucontext.h>
+#endif
+/* End of ANDROID update. */
 
 #define UNW_TARGET	aarch64
 #define UNW_TARGET_AARCH64	1
@@ -175,7 +184,13 @@ typedef ucontext_t unw_tdep_context_t;
 #include "libunwind-common.h"
 #include "libunwind-dynamic.h"
 
-#define unw_tdep_getcontext(uc)         (getcontext (uc), 0)
+/* ANDROID support update. */
+/* There is no getcontext defined for aarch64 yet. */
+#define unw_tdep_getcontext(uc) (({					\
+  unw_tdep_context_t *unw_ctx = (uc);					\
+  }), 0)
+/*#define unw_tdep_getcontext(uc)         (getcontext (uc), 0)*/
+/* End of ANDROID update. */
 #define unw_tdep_is_fpreg		UNW_ARCH_OBJ(is_fpreg)
 
 extern int unw_tdep_is_fpreg (int);
