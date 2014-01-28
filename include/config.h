@@ -161,7 +161,7 @@
 /* #undef HAVE_SYS_LINK_H */
 
 /* Define to 1 if you have the <sys/procfs.h> header file. */
-#define HAVE_SYS_PROCFS_H 1
+/* #undef HAVE_SYS_PROCFS_H */
 
 /* Define to 1 if you have the <sys/ptrace.h> header file. */
 #define HAVE_SYS_PTRACE_H 1
