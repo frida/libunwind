@@ -827,10 +827,20 @@ uncached_dwarf_find_save_locs (struct dwarf_cursor *c)
     }
 
   if ((ret = create_state_record_for (c, &sr, c->ip)) < 0)
-    return ret;
+    {
+      /* ANDROID support update. */
+      put_unwind_info (c, &c->pi);
+      /* End of ANDROID update. */
+      return ret;
+    }
 
   if ((ret = apply_reg_state (c, &sr.rs_current)) < 0)
-    return ret;
+    {
+      /* ANDROID support update. */
+      put_unwind_info (c, &c->pi);
+      /* End of ANDROID update. */
+      return ret;
+    }
 
   put_unwind_info (c, &c->pi);
   return 0;
