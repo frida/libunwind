@@ -935,7 +935,20 @@ dwarf_search_unwind_table (unw_addr_space_t as, unw_word_t ip,
     }
 
   if (ip < pi->start_ip || ip >= pi->end_ip)
-    return -UNW_ENOINFO;
+    {
+      /* ANDROID support update. */
+      if (need_unwind_info && pi->unwind_info && pi->format == UNW_INFO_FORMAT_TABLE)
+        {
+          /* Free the memory used if the call fails. Otherwise, when there
+           * is a mix of dwarf and other unwind data, the memory allocated
+           * will be leaked.
+           */
+          mempool_free (&dwarf_cie_info_pool, pi->unwind_info);
+          pi->unwind_info = NULL;
+        }
+      /* End of ANDROID support update. */
+      return -UNW_ENOINFO;
+    }
 
   return 0;
 }
