@@ -94,9 +94,6 @@ get_map(struct map_info *map_list, unw_word_t addr)
 
 int maps_is_readable(struct map_info *map_list, unw_word_t addr)
 {
-  /* If there is no map, assume everything is okay. */
-  if (map_list == NULL)
-    return 1;
   struct map_info *map = get_map(map_list, addr);
   if (map != NULL)
     return map->flags & PROT_READ;
@@ -105,9 +102,6 @@ int maps_is_readable(struct map_info *map_list, unw_word_t addr)
 
 int maps_is_writable(struct map_info *map_list, unw_word_t addr)
 {
-  /* If there is no map, assume everything is okay. */
-  if (map_list == NULL)
-    return 1;
   struct map_info *map = get_map(map_list, addr);
   if (map != NULL)
     return map->flags & PROT_WRITE;
