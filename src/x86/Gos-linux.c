@@ -255,25 +255,6 @@ x86_r_uc_addr (ucontext_t *uc, int reg)
 
   switch (reg)
     {
-#if defined(__ANDROID__)
-    case UNW_X86_GS:  addr = &uc->uc_mcontext.gs; break;
-    case UNW_X86_FS:  addr = &uc->uc_mcontext.fs; break;
-    case UNW_X86_ES:  addr = &uc->uc_mcontext.es; break;
-    case UNW_X86_DS:  addr = &uc->uc_mcontext.ds; break;
-    case UNW_X86_EAX: addr = &uc->uc_mcontext.eax; break;
-    case UNW_X86_EBX: addr = &uc->uc_mcontext.ebx; break;
-    case UNW_X86_ECX: addr = &uc->uc_mcontext.ecx; break;
-    case UNW_X86_EDX: addr = &uc->uc_mcontext.edx; break;
-    case UNW_X86_ESI: addr = &uc->uc_mcontext.esi; break;
-    case UNW_X86_EDI: addr = &uc->uc_mcontext.edi; break;
-    case UNW_X86_EBP: addr = &uc->uc_mcontext.ebp; break;
-    case UNW_X86_EIP: addr = &uc->uc_mcontext.eip; break;
-    case UNW_X86_ESP: addr = &uc->uc_mcontext.esp; break;
-    case UNW_X86_TRAPNO:  addr = &uc->uc_mcontext.trapno; break;
-    case UNW_X86_CS:  addr = &uc->uc_mcontext.cs; break;
-    case UNW_X86_EFLAGS:  addr = &uc->uc_mcontext.eflags; break;
-    case UNW_X86_SS:  addr = &uc->uc_mcontext.ss; break;
-#else
     case UNW_X86_GS:  addr = &uc->uc_mcontext.gregs[REG_GS]; break;
     case UNW_X86_FS:  addr = &uc->uc_mcontext.gregs[REG_FS]; break;
     case UNW_X86_ES:  addr = &uc->uc_mcontext.gregs[REG_ES]; break;
@@ -291,7 +272,6 @@ x86_r_uc_addr (ucontext_t *uc, int reg)
     case UNW_X86_CS:  addr = &uc->uc_mcontext.gregs[REG_CS]; break;
     case UNW_X86_EFLAGS:  addr = &uc->uc_mcontext.gregs[REG_EFL]; break;
     case UNW_X86_SS:  addr = &uc->uc_mcontext.gregs[REG_SS]; break;
-#endif
 
     default:
       addr = NULL;
