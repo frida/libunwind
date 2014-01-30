@@ -1,6 +1,29 @@
+#
+# Copyright (C) 2014 The Android Open Source Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 LOCAL_PATH := $(call my-dir)
 
-libunwind_cflags := \
+build_host := false
+ifeq ($(HOST_OS),linux)
+ifeq ($(HOST_ARCH),$(filter $(HOST_ARCH),x86 x86_64))
+build_host := true
+endif
+endif
+
+common_cflags := \
 	-DHAVE_CONFIG_H \
 	-DNDEBUG \
 	-D_GNU_SOURCE \
@@ -9,32 +32,25 @@ libunwind_cflags := \
 # For debug build it is required:
 #  1. Enable flags below
 #  2. On runtime export UNW_DEBUG_LEVEL=x where x controls verbosity (from 1 to 20)
-#libunwind_cflags := \
-	-DHAVE_CONFIG_H \
-	-DDEBUG \
-	-D_GNU_SOURCE \
-	-U_FORTIFY_SOURCE
+#common_cflags := \
+#	-DHAVE_CONFIG_H \
+#	-DDEBUG \
+#	-D_GNU_SOURCE \
+#	-U_FORTIFY_SOURCE
 
-libunwind_includes := \
+common_c_includes := \
 	$(LOCAL_PATH)/src \
 	$(LOCAL_PATH)/include \
 
-define libunwind-arch
-$(if $(filter arm64,$(1)),aarch64,$(1))
-endef
-
 libunwind_arches := arm arm64 mips x86 x86_64
 
-include $(CLEAR_VARS)
-
-LOCAL_MODULE := libunwind
-
-LOCAL_CFLAGS += $(libunwind_cflags)
-LOCAL_C_INCLUDES := $(libunwind_includes)
 $(foreach arch,$(libunwind_arches), \
-  $(eval LOCAL_C_INCLUDES_$(arch) := $(LOCAL_PATH)/include/tdep-$(call libunwind-arch,$(arch))))
+  $(eval common_c_includes_$(arch) := $(LOCAL_PATH)/include/tdep-$(arch)))
 
-LOCAL_SRC_FILES := \
+#-----------------------------------------------------------------------
+# libunwind shared library
+#-----------------------------------------------------------------------
+libunwind_src_files := \
 	src/mi/init.c \
 	src/mi/flush_cache.c \
 	src/mi/mempool.c \
@@ -85,65 +101,64 @@ LOCAL_SRC_FILES := \
 	src/dwarf/global.c \
 	src/os-linux.c \
 
-# 64-bit architectures
-LOCAL_SRC_FILES_arm64 += src/elf64.c
-LOCAL_SRC_FILES_x86_64 += src/elf64.c
-
-# 32-bit architectures
-LOCAL_SRC_FILES_arm   += src/elf32.c
-LOCAL_SRC_FILES_mips  += src/elf32.c
-LOCAL_SRC_FILES_x86   += src/elf32.c
-
 # Arch specific source files.
 $(foreach arch,$(libunwind_arches), \
-  $(eval LOCAL_SRC_FILES_$(arch) += \
-	src/$(call libunwind-arch,$(arch))/is_fpreg.c \
-	src/$(call libunwind-arch,$(arch))/regname.c \
-	src/$(call libunwind-arch,$(arch))/Gcreate_addr_space.c \
-	src/$(call libunwind-arch,$(arch))/Gget_proc_info.c \
-	src/$(call libunwind-arch,$(arch))/Gget_save_loc.c \
-	src/$(call libunwind-arch,$(arch))/Gglobal.c \
-	src/$(call libunwind-arch,$(arch))/Ginit.c \
-	src/$(call libunwind-arch,$(arch))/Ginit_local.c \
-	src/$(call libunwind-arch,$(arch))/Ginit_remote.c \
-	src/$(call libunwind-arch,$(arch))/Gregs.c \
-	src/$(call libunwind-arch,$(arch))/Gresume.c \
-	src/$(call libunwind-arch,$(arch))/Gstep.c \
-	src/$(call libunwind-arch,$(arch))/Lcreate_addr_space.c \
-	src/$(call libunwind-arch,$(arch))/Lget_proc_info.c \
-	src/$(call libunwind-arch,$(arch))/Lget_save_loc.c \
-	src/$(call libunwind-arch,$(arch))/Lglobal.c \
-	src/$(call libunwind-arch,$(arch))/Linit.c \
-	src/$(call libunwind-arch,$(arch))/Linit_local.c \
-	src/$(call libunwind-arch,$(arch))/Linit_remote.c \
-	src/$(call libunwind-arch,$(arch))/Lregs.c \
-	src/$(call libunwind-arch,$(arch))/Lresume.c \
-	src/$(call libunwind-arch,$(arch))/Lstep.c \
+  $(eval libunwind_src_files_$(arch) += \
+	src/$(arch)/is_fpreg.c \
+	src/$(arch)/regname.c \
+	src/$(arch)/Gcreate_addr_space.c \
+	src/$(arch)/Gget_proc_info.c \
+	src/$(arch)/Gget_save_loc.c \
+	src/$(arch)/Gglobal.c \
+	src/$(arch)/Ginit.c \
+	src/$(arch)/Ginit_local.c \
+	src/$(arch)/Ginit_remote.c \
+	src/$(arch)/Gregs.c \
+	src/$(arch)/Gresume.c \
+	src/$(arch)/Gstep.c \
+	src/$(arch)/Lcreate_addr_space.c \
+	src/$(arch)/Lget_proc_info.c \
+	src/$(arch)/Lget_save_loc.c \
+	src/$(arch)/Lglobal.c \
+	src/$(arch)/Linit.c \
+	src/$(arch)/Linit_local.c \
+	src/$(arch)/Linit_remote.c \
+	src/$(arch)/Lregs.c \
+	src/$(arch)/Lresume.c \
+	src/$(arch)/Lstep.c \
 	))
 
-LOCAL_SRC_FILES_arm += \
+# 64-bit architectures
+libunwind_src_files_arm64 += src/elf64.c
+libunwind_src_files_x86_64 += src/elf64.c
+
+# 32-bit architectures
+libunwind_src_files_arm   += src/elf32.c
+libunwind_src_files_mips  += src/elf32.c
+libunwind_src_files_x86   += src/elf32.c
+
+libunwind_src_files_arm += \
 	src/arm/getcontext.S \
 	src/arm/Gis_signal_frame.c \
 	src/arm/Gex_tables.c \
 	src/arm/Lis_signal_frame.c \
 	src/arm/Lex_tables.c \
 
-LOCAL_SRC_FILES_arm64 += \
+libunwind_src_files_arm64 += \
 	src/aarch64/Gis_signal_frame.c \
 	src/aarch64/Lis_signal_frame.c \
 
-LOCAL_SRC_FILES_mips += \
+libunwind_src_files_mips += \
 	src/mips/getcontext-android.S \
 	src/mips/Gis_signal_frame.c \
 	src/mips/Lis_signal_frame.c \
 
-
-LOCAL_SRC_FILES_x86 += \
+libunwind_src_files_x86 += \
 	src/x86/getcontext-linux.S \
 	src/x86/Gos-linux.c \
 	src/x86/Los-linux.c \
 
-LOCAL_SRC_FILES_x86_64 += \
+libunwind_src_files_x86_64 += \
 	src/x86_64/getcontext.S \
 	src/x86_64/Gstash_frame.c \
 	src/x86_64/Gtrace.c \
@@ -153,25 +168,21 @@ LOCAL_SRC_FILES_x86_64 += \
 	src/x86_64/Los-linux.c \
 	src/x86_64/setcontext.S \
 
-LOCAL_SHARED_LIBRARIES := \
+libunwind_shared_libraries_target := \
 	libdl \
 
-LOCAL_ADDITIONAL_DEPENDENCIES := \
-	$(LOCAL_PATH)/Android.mk \
+module := libunwind
+module_tag := optional
+build_type := target
+build_target := SHARED_LIBRARY
+include $(LOCAL_PATH)/Android.build.mk
+build_type := host
+include $(LOCAL_PATH)/Android.build.mk
 
-include $(BUILD_SHARED_LIBRARY)
-
-include $(CLEAR_VARS)
-
-LOCAL_MODULE := libunwind-ptrace
-
-LOCAL_CFLAGS += $(libunwind_cflags)
-LOCAL_C_INCLUDES := $(libunwind_includes)
-$(foreach arch,$(libunwind_arches), \
-  $(eval LOCAL_C_INCLUDES_$(arch) := $(LOCAL_PATH)/include/tdep-$(call libunwind-arch,$(arch))))
-
-# Files needed to trace running processes.
-LOCAL_SRC_FILES += \
+#-----------------------------------------------------------------------
+# libunwind-ptrace shared library
+#-----------------------------------------------------------------------
+libunwind-ptrace_src_files := \
 	src/ptrace/_UPT_elf.c \
 	src/ptrace/_UPT_accessors.c \
 	src/ptrace/_UPT_access_fpreg.c \
@@ -186,10 +197,13 @@ LOCAL_SRC_FILES += \
 	src/ptrace/_UPT_reg_offset.c \
 	src/ptrace/_UPT_resume.c \
 
-LOCAL_SHARED_LIBRARIES := \
+libunwind-ptrace_shared_libraries := \
 	libunwind \
 
-LOCAL_ADDITIONAL_DEPENDENCIES := \
-	$(LOCAL_PATH)/Android.mk \
-
-include $(BUILD_SHARED_LIBRARY)
+module := libunwind-ptrace
+module_tag := optional
+build_type := target
+build_target := SHARED_LIBRARY
+include $(LOCAL_PATH)/Android.build.mk
+build_type := host
+include $(LOCAL_PATH)/Android.build.mk
