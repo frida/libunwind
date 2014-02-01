@@ -24,6 +24,18 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #include "libunwind_i.h"
 
+/* Global to hold the map for all local unwinds. */
+HIDDEN struct map_info *local_map_list = NULL;
+
+PROTECTED void
+unw_map_local_set (unw_map_cursor_t *map_cursor)
+{
+  if (map_cursor != NULL)
+    local_map_list = map_cursor->map_list;
+  else
+    local_map_list = NULL;
+}
+
 PROTECTED void
 unw_map_set (unw_addr_space_t as, unw_map_cursor_t *map_cursor)
 {

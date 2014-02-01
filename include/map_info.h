@@ -37,6 +37,8 @@ struct map_info
     struct map_info *next;
   };
 
+extern struct map_info *local_map_list;
+
 int maps_is_readable(struct map_info *map_list, unw_word_t addr);
 
 int maps_is_writable(struct map_info *map_list, unw_word_t addr);

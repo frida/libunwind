@@ -50,6 +50,10 @@ unw_init_local (unw_cursor_t *cursor, ucontext_t *uc)
   c->dwarf.as_arg = c;
   c->uc = uc;
   c->validate = 0;
+  /* ANDROID support update. */
+  c->dwarf.as->map_list = local_map_list;
+  /* End of ANDROID update. */
+
   return common_init (c, 1);
 }
 
