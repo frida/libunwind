@@ -33,16 +33,7 @@ extern "C" {
 
 #include <inttypes.h>
 #include <stddef.h>
-/* ANDROID support update. */
-#if defined(__ANDROID__)
-#include <signal.h>
-#include <asm/sigcontext.h>
-#include <asm-generic/ucontext.h>
-typedef struct ucontext ucontext_t;
-#else
 #include <ucontext.h>
-#endif
-/* End of ANDROID update. */
 
 #define UNW_TARGET	aarch64
 #define UNW_TARGET_AARCH64	1
