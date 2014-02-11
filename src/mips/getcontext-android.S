@@ -23,26 +23,25 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
+#include "offsets.h"
+
 	.text
 
-#define LINUX_UC_MCONTEXT_SC_REGS 0
-#define LINUX_UC_MCONTEXT_SC_PC (8*32)
-
 #if _MIPS_SIM == _ABIO32
-# if __BYTE_ORDER == __BIG_ENDIAN
+# if defined(__MIPSEB__)
 #  define OFFSET 4
 # else
 #  define OFFSET 0
 # endif
 # define SREG(X) \
- sw $X, (LINUX_UC_MCONTEXT_SC_REGS + 8 * X + OFFSET) ($4); \
+ sw $X, (LINUX_UC_MCONTEXT_GREGS + 8 * X + OFFSET) ($4); \
  sra $1, $X, 31; \
- sw $1, (LINUX_UC_MCONTEXT_SC_REGS + 8 * X + 4 - OFFSET) ($4)
+ sw $1, (LINUX_UC_MCONTEXT_GREGS + 8 * X + 4 - OFFSET) ($4)
 /* Yes, we save the return address to PC. */
 # define SPC \
- sw $31, (LINUX_UC_MCONTEXT_SC_PC + OFFSET) ($4); \
+ sw $31, (LINUX_UC_MCONTEXT_PC + OFFSET) ($4); \
  sra $1, $31, 31; \
- sw $1, (LINUX_UC_MCONTEXT_SC_PC + 4 - OFFSET) ($4)
+ sw $1, (LINUX_UC_MCONTEXT_PC + 4 - OFFSET) ($4)
 #else
 # define SREG(X) sd $X, (LINUX_UC_MCONTEXT_GREGS + 8 * X) ($4)
 # define SPC sd $31, (LINUX_UC_MCONTEXT_PC) ($4)
@@ -54,8 +53,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 	# registers.
 _Umips_getcontext:
 	.set noat
-	SREG (1)
 	SREG (0)
+	SREG (1)
 	SREG (2)
 	SREG (3)
 	SREG (4)
