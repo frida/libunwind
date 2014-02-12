@@ -53,11 +53,25 @@ _UPT_access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val,
     {
 #ifdef HAVE_TTRACE
 #	warning No support for ttrace() yet.
+/* ANDROID support update. */
+#elif defined(__mips__) && _MIPS_SIM == _ABIO32
+      /* The assumption is that sizeof(long) == sizeof(unw_word_t).
+         This isn't true for this mips abi, so it requires two reads to get
+         the entire 64 bit value. */
+      long reg1, reg2;
+      reg1 = ptrace (PTRACE_PEEKDATA, pid, (void*)(uintptr_t)addr, 0);
+      if (errno)
+	return -UNW_EINVAL;
+      reg2 = ptrace (PTRACE_PEEKDATA, pid, (void*)(uintptr_t)(addr + sizeof(long)), 0);
+      if (errno)
+	return -UNW_EINVAL;
+      *val = ((unw_word_t)(reg2) << 32) | reg1;
 #else
       *val = ptrace (PTRACE_PEEKDATA, pid, addr, 0);
       if (errno)
 	return -UNW_EINVAL;
 #endif
+/* End of ANDROID update. */
       Debug (16, "mem[%lx] -> %lx\n", (long) addr, (long) *val);
     }
   return 0;
