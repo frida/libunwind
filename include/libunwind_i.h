@@ -251,9 +251,23 @@ extern unw_dyn_info_list_t _U_dyn_info_list;
 extern pthread_mutex_t _U_dyn_info_list_lock;
 
 #if UNW_DEBUG
-#define unwi_debug_level		UNWI_ARCH_OBJ(debug_level)
+# define unwi_debug_level		UNWI_ARCH_OBJ(debug_level)
 extern long unwi_debug_level;
 
+# ifdef ANDROID
+# include <log/log.h>
+# define LOG_TAG "libunwind"
+
+# define Debug(level, format, ...)					\
+do {									\
+  if (unwi_debug_level >= (level))					\
+    { 									\
+      ALOGI("%*c>%s: " format, ((level) <= 16) ? (level) : 16, ' ',	\
+            __FUNCTION__, ##__VA_ARGS__);				\
+    } 									\
+} while (0)
+# define Dprintf(format, ...) ALOGI(format, ##__VA_ARGS__);
+#else
 # include <stdio.h>
 # define Debug(level,format...)						\
 do {									\
@@ -270,6 +284,7 @@ do {									\
 # ifdef __GNUC__
 #  undef inline
 #  define inline	UNUSED
+# endif
 # endif
 #else
 # define Debug(level,format...)

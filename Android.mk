@@ -26,20 +26,26 @@ endif
 endif
 endif
 
+# Set to true to enable a debug build of the libraries.
+# To control what is logged, set the environment variable UNW_DEBUG_LEVEL=x,
+# where x controls the verbosity (from 1 to 20).
+debug := false
+
+ifneq ($(debug),true)
 common_cflags := \
 	-DHAVE_CONFIG_H \
 	-DNDEBUG \
 	-D_GNU_SOURCE \
 	-Wno-unused-parameter \
 
-# For debug build it is required:
-#  1. Enable flags below
-#  2. On runtime export UNW_DEBUG_LEVEL=x where x controls verbosity (from 1 to 20)
-#common_cflags := \
-#	-DHAVE_CONFIG_H \
-#	-DDEBUG \
-#	-D_GNU_SOURCE \
-#	-U_FORTIFY_SOURCE
+else
+common_cflags := \
+	-DHAVE_CONFIG_H \
+	-DDEBUG \
+	-D_GNU_SOURCE \
+	-U_FORTIFY_SOURCE \
+
+endif
 
 common_c_includes := \
 	$(LOCAL_PATH)/src \
@@ -174,6 +180,12 @@ libunwind_src_files_x86_64 += \
 libunwind_shared_libraries_target := \
 	libdl \
 
+ifeq ($(debug),true)
+libunwind_shared_libraries += \
+	liblog \
+
+endif
+
 module := libunwind
 module_tag := optional
 build_type := target
@@ -202,6 +214,12 @@ libunwind-ptrace_src_files := \
 
 libunwind-ptrace_shared_libraries := \
 	libunwind \
+
+ifeq ($(debug),true)
+libunwind-ptrace_shared_libraries += \
+	liblog \
+
+endif
 
 module := libunwind-ptrace
 module_tag := optional
