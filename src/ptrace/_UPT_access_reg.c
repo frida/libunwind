@@ -32,6 +32,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #   include <asm/ptrace_offsets.h>
 # endif
 # include "tdep-ia64/rse.h"
+#elif defined(__aarch64__)
+# include <sys/uio.h>
 #endif
 
 #if HAVE_DECL_PTRACE_POKEUSER || HAVE_TTRACE
@@ -225,54 +227,6 @@ _UPT_access_reg (unw_addr_space_t as, unw_regnum_t reg, unw_word_t *val,
       }
 #endif /* End of IA64 */
 
-/* ANDROID support update. */
-#ifdef UNW_TARGET_MIPS
-
-#ifdef HAVE_TTRACE
-#	warning No support for ttrace() yet.
-#else
-  typedef struct
-    {
-      uint64_t regs[32];
-      uint64_t lo;
-      uint64_t hi;
-      uint64_t epc;
-      uint64_t badvaddr;
-      uint64_t status;
-      uint64_t cause;
-    }
-  user_regs_struct_t;
-
-  user_regs_struct_t regs;
-  if (write)
-    {
-      Debug(2, "write not support on mips ptrace.\n");
-      return -UNW_EINVAL;
-    }
-  else
-    {
-      if (ptrace(PTRACE_GETREGS, pid, 0, &regs))
-        {
-          goto badreg;
-        }
-
-      if (reg <= UNW_MIPS_R31)
-        {
-          *val = regs.regs[reg];
-          return 0;
-        }
-      else if (reg == UNW_MIPS_PC)
-        {
-          *val = regs.epc;
-          return 0;
-        }
-      goto badreg;
-    }
-#endif
-
-#endif /* End of mips */
-/* End of ANDROID update. */
-
   if ((unsigned) reg >= ARRAY_SIZE (_UPT_reg_offset))
     {
 #if UNW_DEBUG
@@ -323,8 +277,23 @@ _UPT_access_reg (unw_addr_space_t as, unw_regnum_t reg, unw_word_t *val,
 {
   struct UPT_info *ui = arg;
   pid_t pid = ui->pid;
-  gregset_t regs;
+/* ANDROID support update. */
+#if defined(__mips__)
+  struct
+    {
+      uint64_t regs[32];
+      uint64_t lo;
+      uint64_t hi;
+      uint64_t epc;
+      uint64_t badvaddr;
+      uint64_t status;
+      uint64_t cause;
+    }
+  regs;
+#else
   char *r;
+  gregset_t regs;
+#endif
 
 #if UNW_DEBUG
   Debug(16, "using getregs: reg: %s [%u], val: %lx, write: %u\n", unw_regname(reg), (unsigned) reg, (long) val, write);
@@ -332,6 +301,30 @@ _UPT_access_reg (unw_addr_space_t as, unw_regnum_t reg, unw_word_t *val,
   if (write)
     Debug (16, "%s [%u] <- %lx\n", unw_regname (reg), (unsigned) reg, (long) *val);
 #endif
+#if defined(__mips__)
+  if (ptrace(PTRACE_GETREGS, pid, 0, (void*)&regs) == -1)
+    goto badreg;
+  if (write)
+    {
+      if (reg <= UNW_MIPS_R31)
+        regs.regs[reg] = *val;
+      else if (reg == UNW_MIPS_PC)
+        regs.epc = *val;
+      else
+        goto badreg;
+      if (ptrace(PTRACE_SETREGS, pid, 0, (void*)&regs) == -1)
+        goto badreg;
+    }
+  else
+    {
+      if (reg <= UNW_MIPS_R31)
+        *val = regs.regs[reg];
+      else if (reg == UNW_MIPS_PC)
+        *val = regs.epc;
+      else
+        goto badreg;
+    }
+#else
   if ((unsigned) reg >= ARRAY_SIZE (_UPT_reg_offset))
     {
       errno = EINVAL;
@@ -346,12 +339,70 @@ _UPT_access_reg (unw_addr_space_t as, unw_regnum_t reg, unw_word_t *val,
         goto badreg;
   } else
       memcpy(val, r, sizeof(unw_word_t));
+#endif
+/* End of ANDROID update. */
   return 0;
 
  badreg:
   Debug (1, "bad register %s [%u] (error: %s)\n", unw_regname(reg), reg, strerror (errno));
   return -UNW_EBADREG;
 }
+/* ANDROID support update. */
+#elif HAVE_DECL_PT_GETREGSET
+int
+_UPT_access_reg (unw_addr_space_t as, unw_regnum_t reg, unw_word_t *val,
+		 int write, void *arg)
+{
+  struct UPT_info *ui = arg;
+  pid_t pid = ui->pid;
+#if defined(__aarch64__)
+  struct user_pt_regs regs;
+  struct iovec io;
+  io.iov_base = &regs;
+  io.iov_len = sizeof(regs);
+
+#if UNW_DEBUG
+  Debug(16, "using getregset: reg: %s [%u], val: %lx, write: %u\n", unw_regname(reg), (unsigned) reg, (long) val, write);
+
+  if (write)
+    Debug (16, "%s [%u] <- %lx\n", unw_regname (reg), (unsigned) reg, (long) *val);
+#endif
+  if (ptrace(PTRACE_GETREGSET, pid, (void*)NT_PRSTATUS, (void*)&io) == -1)
+    goto badreg;
+  if (write)
+    {
+      if (reg == UNW_AARCH64_SP)
+        regs.sp = *val;
+      else if (reg == UNW_AARCH64_PC)
+        regs.pc = *val;
+      else if (reg < UNW_AARCH64_SP)
+        regs.regs[reg] = *val;
+      else
+        goto badreg;
+      if (ptrace(PTRACE_SETREGSET, pid, (void*)NT_PRSTATUS, (void*)&io) == -1)
+        goto badreg;
+    }
+  else
+    {
+      if (reg == UNW_AARCH64_SP)
+        *val = regs.sp;
+      else if (reg == UNW_AARCH64_PC)
+        *val = regs.pc;
+      else if (reg < UNW_AARCH64_SP)
+        *val = regs.regs[reg];
+      else
+        goto badreg;
+    }
+#else
+#error Unsupported architecture for getregset
+#endif
+  return 0;
+
+ badreg:
+  Debug (1, "bad register %s [%u] (error: %s)\n", unw_regname(reg), reg, strerror (errno));
+  return -UNW_EBADREG;
+}
+/* End of ANDROID update. */
 #else
 #error Port me
 #endif

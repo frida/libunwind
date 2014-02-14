@@ -37,7 +37,11 @@
 
 /* Define to 1 if you have the declaration of `PTRACE_POKEUSER', and to 0 if
    you don't. */
+#if defined(__aarch64__) || defined(__mips__)
+#define HAVE_DECL_PTRACE_POKEUSER 0
+#else
 #define HAVE_DECL_PTRACE_POKEUSER 1
+#endif
 
 /* Define to 1 if you have the declaration of `PTRACE_SINGLESTEP', and to 0 if
    you don't. */
@@ -61,7 +65,19 @@
 
 /* Define to 1 if you have the declaration of `PT_GETREGS', and to 0 if you
    don't. */
+#if defined(__mips__)
+#define HAVE_DECL_PT_GETREGS 1
+#else
 #define HAVE_DECL_PT_GETREGS 0
+#endif
+
+/* Define to 1 if you have the declaration of `PT_GETREGSET', and to 0 if you
+   don't. */
+#if defined(__aarch64__)
+#define HAVE_DECL_PT_GETREGSET 1
+#else
+#define HAVE_DECL_PT_GETREGSET 0
+#endif
 
 /* Define to 1 if you have the declaration of `PT_IO', and to 0 if you don't.
    */
