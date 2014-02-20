@@ -53,6 +53,7 @@ maps_create_list(pid_t pid)
       cur_map->offset = offset;
       cur_map->flags = flags;
       cur_map->path = strdup(mi.path);
+      mutex_init (&cur_map->ei_lock);
       cur_map->ei.size = 0;
       cur_map->ei.image = NULL;
 
@@ -114,6 +115,7 @@ tdep_get_elf_image(unw_addr_space_t as, pid_t pid, unw_word_t ip)
 {
   /* ANDROID support update. */
   struct map_info *map;
+  intrmask_t saved_mask;
 
   if (as->map_list == NULL)
     as->map_list = maps_create_list(pid);
@@ -128,15 +130,17 @@ tdep_get_elf_image(unw_addr_space_t as, pid_t pid, unw_word_t ip)
   if (!map)
     return NULL;
 
+  /* Lock while loading the cached elf image. */
+  lock_acquire (&map->ei_lock, saved_mask);
   if (map->ei.image == NULL)
     {
-      int ret = elf_map_image(&map->ei, map->path);
-      if (ret < 0)
+      if (elf_map_image(&map->ei, map->path) < 0)
         {
           map->ei.image = NULL;
-          return NULL;
+          map = NULL;
         }
     }
+  lock_release (&map->ei_lock, saved_mask);
   /* End of ANDROID update. */
   return map;
 }

@@ -32,6 +32,8 @@ struct map_info
     uintptr_t offset;
     int flags;
     char *path;
+
+    lock_var (ei_lock);
     struct elf_image ei;
 
     struct map_info *next;

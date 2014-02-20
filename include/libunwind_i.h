@@ -186,8 +186,12 @@ static inline void mark_as_used(void *v UNUSED) {
 # define SIGPROCMASK(how, new_mask, old_mask) mark_as_used(old_mask)
 #endif
 
+/* ANDROID support update. */
+#define lock_var(name) \
+  pthread_mutex_t name
 #define define_lock(name) \
-  pthread_mutex_t name = PTHREAD_MUTEX_INITIALIZER
+  lock_var (name) = PTHREAD_MUTEX_INITIALIZER
+/* End of ANDROID update. */
 #define lock_init(l)		mutex_init (l)
 #define lock_acquire(l,m)				\
 do {							\
