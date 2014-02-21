@@ -47,7 +47,7 @@ ifneq ($(build_type),host)
   $(foreach arch,$(libunwind_arches), \
     $(eval LOCAL_C_INCLUDES_$(arch) := $(common_c_includes_$(arch))))
 else
-  $(eval LOCAL_C_INCLUDES += $(common_c_includes_$(HOST_ARCH)))
+  $(eval LOCAL_C_INCLUDES += $(common_c_includes_$(my_host_arch)))
 endif
 
 LOCAL_SRC_FILES := \
@@ -58,7 +58,7 @@ ifneq ($(build_type),host)
   $(foreach arch,$(libunwind_arches), \
     $(eval LOCAL_SRC_FILES_$(arch) :=  $($(module)_src_files_$(arch))))
 else
-  $(eval LOCAL_SRC_FILES +=  $($(module)_src_files_$(HOST_ARCH)))
+  $(eval LOCAL_SRC_FILES +=  $($(module)_src_files_$(my_host_arch)))
 endif
 
 LOCAL_STATIC_LIBRARIES := \

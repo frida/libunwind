@@ -20,8 +20,9 @@ build_host := false
 ifeq ($(HOST_OS),linux)
 ifeq ($(HOST_ARCH),$(filter $(HOST_ARCH),x86 x86_64))
 build_host := true
+my_host_arch := $(HOST_ARCH)
 ifneq ($(strip $(BUILD_HOST_64bit)),)
-HOST_ARCH := x86_64
+my_host_arch := x86_64
 endif
 endif
 endif
