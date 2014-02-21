@@ -135,12 +135,9 @@ tdep_get_elf_image(unw_addr_space_t as, pid_t pid, unw_word_t ip)
   if (map->ei.image == NULL)
     {
       if (elf_map_image(&map->ei, map->path) < 0)
-        {
-          map->ei.image = NULL;
-          map = NULL;
-        }
+        map->ei.image = NULL;
     }
   lock_release (&map->ei_lock, saved_mask);
   /* End of ANDROID update. */
-  return map;
+  return map->ei.image ? map : NULL;
 }
