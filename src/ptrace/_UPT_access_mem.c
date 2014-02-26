@@ -65,7 +65,7 @@ _UPT_access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val,
       reg2 = ptrace (PTRACE_PEEKDATA, pid, (void*)(uintptr_t)(addr + sizeof(long)), 0);
       if (errno)
 	return -UNW_EINVAL;
-      *val = ((unw_word_t)(reg2) << 32) | reg1;
+      *val = ((unw_word_t)(reg2) << 32) | (uint32_t)reg1;
 #else
       *val = ptrace (PTRACE_PEEKDATA, pid, addr, 0);
       if (errno)
