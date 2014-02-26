@@ -100,6 +100,16 @@ _UPT_access_fpreg (unw_addr_space_t as, unw_regnum_t reg, unw_fpreg_t *val,
 #endif
   return 0;
 }
+/* ANDROID support update. */
+#elif defined(__mips__) || defined(__aarch64__)
+int
+_UPT_access_fpreg (unw_addr_space_t as, unw_regnum_t reg, unw_fpreg_t *val,
+		   int write, void *arg)
+{
+  #warning _UPT_access_fpreg is not implemented and not currently used.
+  return -UNW_EBADREG;
+}
+/* End of ANDROID update. */
 #else
 #error Fix me
 #endif
