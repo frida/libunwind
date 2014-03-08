@@ -162,7 +162,7 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
     {
       /* ANDROID support update. */
 #ifdef UNW_LOCAL_ONLY
-      if (maps_is_writable(as->map_list, addr))
+      if (map_local_is_writable (addr))
         {
 #endif
           Debug (16, "mem[%016lx] <- %lx\n", addr, *val);
@@ -187,7 +187,7 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
 
       /* ANDROID support update. */
 #ifdef UNW_LOCAL_ONLY
-      if (maps_is_readable(as->map_list, addr))
+      if (map_local_is_readable (addr))
         {
 #endif
           *val = *(unw_word_t *) addr;
@@ -293,6 +293,8 @@ x86_64_local_addr_space_init (void)
 
   memset (last_good_addr, 0, sizeof (unw_word_t) * NLGA);
   lga_victim = 0;
+
+  map_local_init ();
 }
 
 #endif /* !UNW_REMOTE_ONLY */

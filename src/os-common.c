@@ -1,7 +1,5 @@
 /* libunwind - a platform-independent unwind library
-
-   Copied from src/x86_64/, modified slightly (or made empty stubs) for
-   building frysk successfully on ppc64, by Wu Zhou <woodzltc@cn.ibm.com>
+   Copyright (C) 2014 The Android Open Source Project
 
 This file is part of libunwind.
 
@@ -24,43 +22,37 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
-#include <libunwind_i.h>
 
-#ifdef UNW_TARGET_PPC64
-#include "../ppc64/init.h"
-#else
-#include "../ppc32/init.h"
-#endif
+#include "libunwind_i.h"
+#include "map_info.h"
 
-#ifdef UNW_REMOTE_ONLY
+extern struct map_info *local_get_elf_image (unw_word_t, struct elf_image *,
+                                             unsigned long *, unsigned long *,
+                                             char **);
 
 PROTECTED int
-unw_init_local (unw_cursor_t *cursor, ucontext_t *uc)
+tdep_get_elf_image (unw_addr_space_t as, struct elf_image *ei,
+                    pid_t pid, unw_word_t ip,
+                    unsigned long *segbase, unsigned long *mapoff, char **path)
 {
-  /* XXX: empty stub.  */
-  return -UNW_EINVAL;
+  struct map_info *map;
+
+  if (pid == getpid())
+    return local_get_elf_image (ei, ip, segbase, mapoff, path);
+
+  map = map_find_from_addr (as->map_list, ip);
+  if (!map)
+    return -UNW_ENOINFO;
+
+  if (elf_map_cached_image (map, ip) < 0)
+    return -UNW_ENOINFO;
+
+  *ei = map->ei;
+  *segbase = map->start;
+  *mapoff = map->offset;
+  if (path != NULL)
+    {
+      *path = strdup (map->path);
+    }
+  return 0;
 }
-
-#else /* !UNW_REMOTE_ONLY */
-
-PROTECTED int
-unw_init_local (unw_cursor_t *cursor, ucontext_t *uc)
-{
-  struct cursor *c = (struct cursor *) cursor;
-
-  if (!tdep_init_done)
-    tdep_init ();
-
-  Debug (1, "(cursor=%p)\n", c);
-
-  c->dwarf.as = unw_local_addr_space;
-  c->dwarf.as_arg = uc;
-
-  #ifdef UNW_TARGET_PPC64
-    return common_init_ppc64 (c, 1);
-  #else
-    return common_init_ppc32 (c, 1);
-  #endif
-}
-
-#endif /* !UNW_REMOTE_ONLY */

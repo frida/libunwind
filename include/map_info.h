@@ -39,14 +39,23 @@ struct map_info
     struct map_info *next;
   };
 
+extern struct mempool map_pool;
 extern struct map_info *local_map_list;
 
-int maps_is_readable(struct map_info *map_list, unw_word_t addr);
+void map_local_init (void);
 
-int maps_is_writable(struct map_info *map_list, unw_word_t addr);
+int map_local_is_readable (unw_word_t);
 
-struct map_info *maps_create_list(pid_t pid);
+int map_local_is_writable (unw_word_t);
 
-void maps_destroy_list(struct map_info *map_info);
+struct map_info *map_alloc_info (void);
+
+void map_free_info (struct map_info *);
+
+struct map_info *map_find_from_addr (struct map_info *, unw_word_t);
+
+struct map_info *maps_create_list (pid_t);
+
+void map_destroy_list (struct map_info *);
 
 #endif /* map_info_h */
