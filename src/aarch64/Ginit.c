@@ -91,13 +91,13 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
       if (maps_is_writable(as->map_list, addr))
         {
 #endif
-          Debug (16, "mem[%x] <- %x\n", addr, *val);
+          Debug (16, "mem[%lx] <- %lx\n", addr, *val);
           *(unw_word_t *) addr = *val;
 #ifdef UNW_LOCAL_ONLY
         }
       else
         {
-          Debug (16, "Unwritable memory mem[%x] <- %x\n", addr, *val);
+          Debug (16, "Unwritable memory mem[%lx] <- %lx\n", addr, *val);
           return -1;
         }
 #endif
@@ -111,12 +111,12 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
         {
 #endif
           *val = *(unw_word_t *) addr;
-          Debug (16, "mem[%x] -> %x\n", addr, *val);
+          Debug (16, "mem[%lx] -> %lx\n", addr, *val);
 #ifdef UNW_LOCAL_ONLY
         }
       else
         {
-          Debug (16, "Unreadable memory mem[%x] -> XXX\n", addr);
+          Debug (16, "Unreadable memory mem[%lx] -> XXX\n", addr);
           return -1;
         }
 #endif
@@ -141,12 +141,12 @@ access_reg (unw_addr_space_t as, unw_regnum_t reg, unw_word_t *val, int write,
   if (write)
     {
       *(unw_word_t *) addr = *val;
-      Debug (12, "%s <- %x\n", unw_regname (reg), *val);
+      Debug (12, "%s <- %lx\n", unw_regname (reg), *val);
     }
   else
     {
       *val = *(unw_word_t *) addr;
-      Debug (12, "%s -> %x\n", unw_regname (reg), *val);
+      Debug (12, "%s -> %lx\n", unw_regname (reg), *val);
     }
   return 0;
 
