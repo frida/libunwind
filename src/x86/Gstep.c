@@ -35,9 +35,10 @@ unw_step (unw_cursor_t *cursor)
   Debug (1, "(cursor=%p, ip=0x%08x)\n", c, (unsigned) c->dwarf.ip);
 
   /* ANDROID support update. */
-  /* Save the current ip to check to prevent looping if the decode yields
-     the same ip as before. */
-  unw_word_t saved_ip = c->dwarf.ip;
+  /* Save the current ip/cfa to prevent looping if the decode yields
+     the same ip/cfa as before. */
+  unw_word_t old_ip = c->dwarf.ip;
+  unw_word_t old_cfa = c->dwarf.cfa;
   /* End of ANDROID update. */
 
   /* Try DWARF-based unwinding... */
@@ -118,9 +119,9 @@ unw_step (unw_cursor_t *cursor)
           /* Adjust the pc to the instruction before. */
           c->dwarf.ip--;
         }
-      /* If the decode yields the exact same ip as before, then indicate the
+      /* If the decode yields the exact same ip/cfa as before, then indicate
          the unwind is complete. */
-      if (saved_ip == c->dwarf.ip)
+      if (old_ip == c->dwarf.ip && old_cfa == c->dwarf.cfa)
         return 0;
       c->dwarf.frame++;
     }
