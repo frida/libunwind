@@ -176,10 +176,10 @@ typedef ucontext_t unw_tdep_context_t;
 #include "libunwind-dynamic.h"
 
 /* ANDROID support update. */
-/* There is no getcontext defined for aarch64 yet. */
+/* There is no getcontext in Android. */
 #define unw_tdep_getcontext(uc) (({					\
   unw_tdep_context_t *unw_ctx = (uc);					\
-  }), 0)
+  }), -1)
 /*#define unw_tdep_getcontext(uc)         (getcontext (uc), 0)*/
 /* End of ANDROID update. */
 #define unw_tdep_is_fpreg		UNW_ARCH_OBJ(is_fpreg)
