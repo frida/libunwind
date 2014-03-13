@@ -135,7 +135,10 @@ elf_w (lookup_symbol) (unw_addr_space_t as,
 		  Debug (16, "0x%016lx info=0x%02x %s\n",
 			 (long) val, sym->st_info, strtab + sym->st_name);
 
-		  if ((Elf_W (Addr)) (ip - val) < *min_dist)
+                  /* ANDROID support update */
+                  if ((Elf_W (Addr)) (ip - val) < *min_dist
+                      && (Elf_W (Addr)) (ip - val) < sym->st_size)
+                  /* End of ANDROID update */
 		    {
 		      *min_dist = (Elf_W (Addr)) (ip - val);
 		      strncpy (buf, strtab + sym->st_name, buf_len);
