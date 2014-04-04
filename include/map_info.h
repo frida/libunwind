@@ -54,7 +54,7 @@ void map_free_info (struct map_info *);
 
 struct map_info *map_find_from_addr (struct map_info *, unw_word_t);
 
-struct map_info *maps_create_list (pid_t);
+struct map_info *map_create_list (pid_t);
 
 void map_destroy_list (struct map_info *);
 
