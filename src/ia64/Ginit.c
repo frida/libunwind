@@ -80,7 +80,7 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
     {
       /* ANDROID support update. */
 #ifdef UNW_LOCAL_ONLY
-      if (map_local_is_writable(addr))
+      if (map_local_is_writable (addr))
         {
 #endif
           Debug (12, "mem[%lx] <- %lx\n", addr, *val);
