@@ -36,7 +36,10 @@ static int
 get_unwind_info (struct elf_dyn_info *edi, pid_t pid, unw_addr_space_t as, unw_word_t ip)
 {
   /* ANDROID support update. */
-  struct map_info *map;
+  unsigned long segbase, mapoff;
+  struct elf_image ei;
+  int ret;
+  char *path = NULL;
   /* End of ANDROID update. */
 
 #if UNW_TARGET_IA64 && defined(__linux)
@@ -60,12 +63,13 @@ get_unwind_info (struct elf_dyn_info *edi, pid_t pid, unw_addr_space_t as, unw_w
   invalidate_edi(edi);
 
   /* ANDROID support update. */
-  map = tdep_get_elf_image (as, pid, ip);
-  if (map == NULL)
+  if (tdep_get_elf_image (as, &ei, pid, ip, &segbase, &mapoff, &path) < 0)
     return -UNW_ENOINFO;
 
-  if (tdep_find_unwind_table (edi, &map->ei, as, map->path, map->start, map->offset, ip) < 0)
-    return -UNW_ENOINFO;
+  ret = tdep_find_unwind_table (edi, &ei, as, path, segbase, mapoff, ip);
+  free(path);
+  if (ret < 0)
+    return ret;
   /* End of ANDROID update. */
 
   /* This can happen in corner cases where dynamically generated

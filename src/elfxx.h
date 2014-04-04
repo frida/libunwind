@@ -31,6 +31,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <sys/stat.h>
 
 #include "libunwind_i.h"
+#include "map_info.h"
 
 #if ELF_CLASS == ELFCLASS32
 # define ELF_W(x)	ELF32_##x
@@ -96,3 +97,25 @@ elf_map_image (struct elf_image *ei, const char *path)
 
   return 0;
 }
+
+/* ANDROID support update */
+static inline int
+elf_map_cached_image (struct map_info *map, unw_word_t ip)
+{
+  intrmask_t saved_mask;
+  int return_value = 0;
+
+  /* Lock while loading the cached elf image. */
+  lock_acquire (&map->ei_lock, saved_mask);
+  if (map->ei.image == NULL)
+    {
+      if (elf_map_image(&map->ei, map->path) < 0)
+        {
+          map->ei.image = NULL;
+          return_value = -1;
+        }
+    }
+  lock_release (&map->ei_lock, saved_mask);
+  return return_value;
+}
+/* End of ANDROID update */

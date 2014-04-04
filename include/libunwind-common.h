@@ -280,12 +280,17 @@ extern const char *unw_strerror (int);
 extern int unw_backtrace (void **, int);
 
 /* ANDROID support update. */
-extern void unw_map_local_set (unw_map_cursor_t *);
+extern int unw_map_local_cursor_valid (unw_map_cursor_t *);
+extern void unw_map_local_cursor_get (unw_map_cursor_t *);
+extern int unw_map_local_cursor_get_next (unw_map_cursor_t *, unw_map_t *);
+extern int unw_map_local_create (void);
+extern void unw_map_local_destroy (void);
 extern void unw_map_set (unw_addr_space_t, unw_map_cursor_t *);
 extern void unw_map_cursor_reset (unw_map_cursor_t *);
+extern void unw_map_cursor_clear (unw_map_cursor_t *);
 extern int unw_map_cursor_create (unw_map_cursor_t *, pid_t);
 extern void unw_map_cursor_destroy (unw_map_cursor_t *);
-extern int unw_map_cursor_get (unw_map_cursor_t *, unw_map_t *);
+extern int unw_map_cursor_get_next (unw_map_cursor_t *, unw_map_t *);
 /* End of ANDROID update. */
 
 extern unw_addr_space_t unw_local_addr_space;

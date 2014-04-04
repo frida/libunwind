@@ -89,9 +89,6 @@ unw_init_local (unw_cursor_t *cursor, unw_context_t *uc)
   Debug (1, "(cursor=%p)\n", c);
 
   c->as = unw_local_addr_space;
-  /* ANDROID support update. */
-  c->as->map_list = local_map_list;
-  /* End of ANDROID update. */
   set_as_arg (c, uc);
 
   if ((ret = get_initial_stack_pointers (c, uc, &sp, &bsp)) < 0)

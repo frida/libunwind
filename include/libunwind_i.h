@@ -187,22 +187,37 @@ static inline void mark_as_used(void *v UNUSED) {
 #endif
 
 /* ANDROID support update. */
+#define __lock_acquire_internal(l, m, acquire_func)	\
+do {							\
+  SIGPROCMASK (SIG_SETMASK, &unwi_full_mask, &(m));	\
+  acquire_func (l);					\
+} while (0)
+#define __lock_release_internal(l, m, release_func)	\
+do {							\
+  release_func (l);					\
+  SIGPROCMASK (SIG_SETMASK, &(m), NULL);		\
+} while (0)
+
+#define lock_rdwr_var(name)				\
+  pthread_rwlock_t name
+#define lock_rdwr_init(l)	pthread_rwlock_init (l, NULL)
+#define lock_rdwr_wr_acquire(l, m)			\
+  __lock_acquire_internal(l, m, pthread_rwlock_wrlock)
+#define lock_rdwr_rd_acquire(l, m)			\
+  __lock_acquire_internal(l, m, pthread_rwlock_rdlock)
+#define lock_rdwr_release(l, m)				\
+  __lock_release_internal(l, m, pthread_rwlock_unlock)
+
 #define lock_var(name) \
   pthread_mutex_t name
 #define define_lock(name) \
   lock_var (name) = PTHREAD_MUTEX_INITIALIZER
-/* End of ANDROID update. */
 #define lock_init(l)		mutex_init (l)
 #define lock_acquire(l,m)				\
-do {							\
-  SIGPROCMASK (SIG_SETMASK, &unwi_full_mask, &(m));	\
-  mutex_lock (l);					\
-} while (0)
+  __lock_acquire_internal(l, m, mutex_lock)
 #define lock_release(l,m)			\
-do {						\
-  mutex_unlock (l);				\
-  SIGPROCMASK (SIG_SETMASK, &(m), NULL);	\
-} while (0)
+  __lock_release_internal(l, m, mutex_unlock)
+/* End of ANDROID update. */
 
 #define SOS_MEMORY_SIZE 16384	/* see src/mi/mempool.c */
 

@@ -47,9 +47,6 @@ unw_init_local (unw_cursor_t *cursor, ucontext_t *uc)
 
   c->dwarf.as = unw_local_addr_space;
   c->dwarf.as_arg = uc;
-  /* ANDROID support update. */
-  c->dwarf.as->map_list = local_map_list;
-  /* End of ANDROID update. */
 
   return common_init (c, 1);
 }

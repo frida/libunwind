@@ -34,7 +34,7 @@ unw_destroy_addr_space (unw_addr_space_t as)
 # endif
   /* ANDROID support update. */
   if (as->map_list)
-    maps_destroy_list(as->map_list);
+    map_destroy_list(as->map_list);
   /* End of ANDROID update. */
   free (as);
 #endif

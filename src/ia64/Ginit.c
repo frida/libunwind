@@ -80,7 +80,7 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
     {
       /* ANDROID support update. */
 #ifdef UNW_LOCAL_ONLY
-      if (maps_is_writable(as->map_list, addr))
+      if (map_local_is_writable(addr))
         {
 #endif
           Debug (12, "mem[%lx] <- %lx\n", addr, *val);
@@ -99,7 +99,7 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
     {
       /* ANDROID support update. */
 #ifdef UNW_LOCAL_ONLY
-      if (maps_is_readable(as->map_list, addr))
+      if (map_local_is_readable (addr))
         {
 #endif
           *val = *(unw_word_t *) addr;
@@ -399,6 +399,8 @@ ia64_local_addr_space_init (void)
   local_addr_space.acc.resume = ia64_local_resume;
   local_addr_space.acc.get_proc_name = get_static_proc_name;
   unw_flush_cache (&local_addr_space, 0, 0);
+
+  map_local_init ();
 }
 
 #endif /* !UNW_REMOTE_ONLY */
