@@ -26,9 +26,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "libunwind_i.h"
 #include "map_info.h"
 
-extern struct map_info *local_get_elf_image (unw_word_t, struct elf_image *,
-                                             unsigned long *, unsigned long *,
-                                             char **);
+extern int local_get_elf_image (struct elf_image *, unw_word_t,
+                                unsigned long *, unsigned long *,
+                                char **);
 
 PROTECTED int
 tdep_get_elf_image (unw_addr_space_t as, struct elf_image *ei,
