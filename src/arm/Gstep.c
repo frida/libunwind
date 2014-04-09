@@ -100,7 +100,7 @@ static void adjust_ip(struct cursor *c)
           a = unw_get_accessors (as);
           arg = c->dwarf.as_arg;
 
-          if (ip >= 5 && (*a->access_mem) (as, ip-5, &value, 0, arg) < 0 ||
+          if (ip < 5 || (*a->access_mem) (as, ip-5, &value, 0, arg) < 0 ||
               (value & 0xe000f000) != 0xe000f000)
             adjust = 2;
         }

@@ -94,5 +94,9 @@ tdep_stash_frame (struct dwarf_cursor *d, struct dwarf_reg_state *rs)
 
   /* PLT and guessed RBP-walked frames are handled in unw_step(). */
   else
-    Debug (4, " unusual frame\n");
+    /* ANDROID support update. */
+    {
+      Debug (4, " unusual frame\n");
+    }
+    /* End of ANDROID update. */
 }

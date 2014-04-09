@@ -80,7 +80,9 @@ elf_w (string_table) (struct elf_image *ei, int section)
     }
 
   Debug (16, "strtab=0x%lx\n", (long) str_shdr->sh_offset);
-  return ei->image + str_shdr->sh_offset;
+  /* End of ANDROID update. */
+  return (char*) ((uintptr_t) ei->image + str_shdr->sh_offset);
+  /* End of ANDROID update. */
 }
 
 static int

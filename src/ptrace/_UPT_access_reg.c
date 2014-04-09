@@ -241,13 +241,17 @@ _UPT_access_reg (unw_addr_space_t as, unw_regnum_t reg, unw_word_t *val,
 #else
   errno = 0;
   if (write)
-    ptrace (PTRACE_POKEUSER, pid, _UPT_reg_offset[reg], *val);
+    /* ANDROID support update. */
+    ptrace (PTRACE_POKEUSER, pid, (void*) (uintptr_t) _UPT_reg_offset[reg], (void*) *val);
+    /* End of ANDROID update. */
   else {
 #if UNW_DEBUG
     Debug(16, "ptrace PEEKUSER pid: %lu , reg: %lu , offs: %lu\n", (unsigned long)pid, (unsigned long)reg,
         (unsigned long)_UPT_reg_offset[reg]);
 #endif
-    *val = ptrace (PTRACE_PEEKUSER, pid, _UPT_reg_offset[reg], 0);
+    /* ANDROID support update. */
+    *val = ptrace (PTRACE_PEEKUSER, pid, (void*) (uintptr_t) _UPT_reg_offset[reg], 0);
+    /* End of ANDROID update. */
   }
   if (errno) {
 #if UNW_DEBUG

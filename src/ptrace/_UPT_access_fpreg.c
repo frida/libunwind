@@ -46,8 +46,10 @@ _UPT_access_fpreg (unw_addr_space_t as, unw_regnum_t reg, unw_fpreg_t *val,
 #ifdef HAVE_TTRACE
 #	warning No support for ttrace() yet.
 #else
-	ptrace (PTRACE_POKEUSER, pid, _UPT_reg_offset[reg] + i * sizeof(wp[i]),
-		wp[i]);
+        /* ANDROID support update. */
+	ptrace (PTRACE_POKEUSER, pid, (void*) (_UPT_reg_offset[reg] + i * sizeof(wp[i])),
+		(void*) wp[i]);
+        /* End of ANDROID update. */
 #endif
 	if (errno)
 	  return -UNW_EBADREG;
@@ -58,8 +60,10 @@ _UPT_access_fpreg (unw_addr_space_t as, unw_regnum_t reg, unw_fpreg_t *val,
 #ifdef HAVE_TTRACE
 #	warning No support for ttrace() yet.
 #else
+        /* ANDROID support update. */
 	wp[i] = ptrace (PTRACE_PEEKUSER, pid,
-			_UPT_reg_offset[reg] + i * sizeof(wp[i]), 0);
+			(void*) (_UPT_reg_offset[reg] + i * sizeof(wp[i])), 0);
+        /* End of ANDROID update. */
 #endif
 	if (errno)
 	  return -UNW_EBADREG;
@@ -106,7 +110,7 @@ int
 _UPT_access_fpreg (unw_addr_space_t as, unw_regnum_t reg, unw_fpreg_t *val,
 		   int write, void *arg)
 {
-  #warning _UPT_access_fpreg is not implemented and not currently used.
+# pragma message("_UPT_access_fpreg is not implemented and not currently used.")
   return -UNW_EBADREG;
 }
 /* End of ANDROID update. */

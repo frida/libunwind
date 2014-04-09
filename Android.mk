@@ -32,15 +32,26 @@ endif
 # where x controls the verbosity (from 1 to 20).
 debug := false
 
-ifneq ($(debug),true)
+
 common_cflags := \
+	-Wno-unused-parameter \
+	-Werror \
+
+# gcc 4.8 appears to be overeager declaring that a variable is uninitialized,
+# under certain circumstances. Turn off this warning only for target so that
+# coverage is still present for the host code. When the entire build system
+# is switched to 4.9, then this can be removed.
+common_cflags_target := \
+	-Wno-maybe-uninitialized \
+
+ifneq ($(debug),true)
+common_cflags += \
 	-DHAVE_CONFIG_H \
 	-DNDEBUG \
 	-D_GNU_SOURCE \
-	-Wno-unused-parameter \
 
 else
-common_cflags := \
+common_cflags += \
 	-DHAVE_CONFIG_H \
 	-DDEBUG \
 	-D_GNU_SOURCE \

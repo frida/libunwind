@@ -25,11 +25,13 @@ LOCAL_ADDITIONAL_DEPENDENCIES := \
 
 LOCAL_CFLAGS := \
     $(common_cflags) \
+    $(common_cflags_$(build_type)) \
     $($(module)_cflags) \
     $($(module)_cflags_$(build_type)) \
 
 LOCAL_CONLYFLAGS += \
     $(common_conlyflags) \
+    $(common_conlyflags_$(build_type)) \
     $($(module)_conlyflags) \
     $($(module)_conlyflags_$(build_type)) \
 
