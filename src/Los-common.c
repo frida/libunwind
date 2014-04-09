@@ -154,6 +154,7 @@ local_get_elf_image (struct elf_image *ei, unw_word_t ip,
 {
   struct map_info *map;
   intrmask_t saved_mask;
+  int return_value = -UNW_ENOINFO;
 
   lock_rdwr_rd_acquire (&local_rdwr_lock, saved_mask);
   map = map_find_from_addr (local_map_list, ip);
@@ -167,9 +168,7 @@ local_get_elf_image (struct elf_image *ei, unw_word_t ip,
       map = map_find_from_addr (local_map_list, ip);
     }
 
-  if (map && elf_map_cached_image (map, ip) < 0)
-    map = NULL;
-  else
+  if (map && elf_map_cached_image (map, ip) == 0)
     {
       *ei = map->ei;
       *segbase = map->start;
@@ -181,8 +180,9 @@ local_get_elf_image (struct elf_image *ei, unw_word_t ip,
           else
             *path = NULL;
         }
+      return_value = 0;
     }
   lock_rdwr_release (&local_rdwr_lock, saved_mask);
 
-  return 0;
+  return return_value;
 }
