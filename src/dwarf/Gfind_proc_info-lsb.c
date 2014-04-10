@@ -236,34 +236,9 @@ file_error:
    the name of the binary in *name (space is allocated by the caller)
    Returns 0 if a binary is successfully found, or 1 if an error occurs.  */
 
-static int
-find_binary_for_address (unw_word_t ip, char *name, size_t name_size)
-{
-#if defined(__linux) && (!UNW_REMOTE_ONLY)
-  struct map_iterator mi;
-  int found = 0;
-  int pid = getpid ();
-  unsigned long segbase, mapoff, hi;
-
-  maps_init (&mi, pid);
-  while (maps_next (&mi, &segbase, &hi, &mapoff, NULL))
-    if (ip >= segbase && ip < hi)
-      {
-	size_t len = strlen (mi.path);
-
-	if (len + 1 <= name_size)
-	  {
-	    memcpy (name, mi.path, len + 1);
-	    found = 1;
-	  }
-	break;
-      }
-  maps_close (&mi);
-  return !found;
-#endif
-
-  return 1;
-}
+/* ANDROID support update. */
+/* Removed the find_binary_for_address function. */
+/* End of ANDROID update. */
 
 /* Locate and/or try to load a debug_frame section for address ADDR.  Return
    pointer to debug frame descriptor, or zero if not found.  */
@@ -276,12 +251,9 @@ locate_debug_info (unw_addr_space_t as, unw_word_t addr, const char *dlname,
   int err;
   char *buf;
   size_t bufsize;
-#if defined(CONSERVE_STACK)
-  char *path = NULL;
-#else
-  char path[PATH_MAX];
-#endif
-  char *name = path;
+  /* ANDROID support update. */
+  char *name = NULL;
+  /* End of ANDROID update. */
 
   /* First, see if we loaded this frame already.  */
 
@@ -292,26 +264,24 @@ locate_debug_info (unw_addr_space_t as, unw_word_t addr, const char *dlname,
 	return w;
     }
 
+  /* ANDROID support update. */
   /* If the object name we receive is blank, there's still a chance of locating
-     the file by parsing /proc/self/maps.  */
+     the file by looking at the maps cache. */
 
   if (strcmp (dlname, "") == 0)
     {
-#if defined(CONSERVE_STACK)
-      path = (char*)malloc(PATH_MAX);
-      if (path == NULL)
-        return NULL;
-      name = path;
+#ifdef UNW_LOCAL_ONLY
+      name = map_local_get_image_name (addr);
+#else
+      struct map_info *map = map_find_from_addr (as->map_list, addr);
+      if (map)
+        name = strdup (map->path);
 #endif
-
-      err = find_binary_for_address (addr, name, PATH_MAX);
-      if (err)
+      if (!name)
+  /* End of ANDROID update. */
         {
 	  Debug (15, "tried to locate binary for 0x%" PRIx64 ", but no luck\n",
 		 (uint64_t) addr);
-#if defined(CONSERVE_STACK)
-          free(path);
-#endif
           return 0;
 	}
     }
@@ -334,9 +304,10 @@ locate_debug_info (unw_addr_space_t as, unw_word_t addr, const char *dlname,
       as->debug_frames = fdesc;
     }
 
-#if defined(CONSERVE_STACK)
-  free(path);
-#endif
+  /* ANDROID support update. */
+  if (name != dlname)
+    free(name);
+  /* End of ANDROID update. */
 
   return fdesc;
 }
@@ -652,11 +623,23 @@ dwarf_callback (struct dl_phdr_info *info, size_t size, void *ptr)
 	  /* If there is no search table or it has an unsupported
 	     encoding, fall back on linear search.  */
 	  if (hdr->table_enc == DW_EH_PE_omit)
-	    Debug (4, "table `%s' lacks search table; doing linear search\n",
-		   info->dlpi_name);
+            /* ANDROID support update. */
+	    {
+            /* End of ANDROID update. */
+	      Debug (4, "table `%s' lacks search table; doing linear search\n",
+		     info->dlpi_name);
+            /* ANDROID support update. */
+	    }
+            /* End of ANDROID update. */
 	  else
-	    Debug (4, "table `%s' has encoding 0x%x; doing linear search\n",
-		   info->dlpi_name, hdr->table_enc);
+            /* ANDROID support update. */
+	    {
+            /* End of ANDROID update. */
+	      Debug (4, "table `%s' has encoding 0x%x; doing linear search\n",
+		     info->dlpi_name, hdr->table_enc);
+            /* ANDROID support update. */
+	    }
+            /* End of ANDROID update. */
 
 	  eh_frame_end = max_load_addr;	/* XXX can we do better? */
 
