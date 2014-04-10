@@ -186,3 +186,28 @@ local_get_elf_image (struct elf_image *ei, unw_word_t ip,
 
   return return_value;
 }
+
+PROTECTED char *
+map_local_get_image_name (unw_word_t ip)
+{
+  struct map_info *map;
+  intrmask_t saved_mask;
+  char *image_name = NULL;
+
+  lock_rdwr_rd_acquire (&local_rdwr_lock, saved_mask);
+  map = map_find_from_addr (local_map_list, ip);
+  if (!map)
+    {
+      lock_rdwr_release (&local_rdwr_lock, saved_mask);
+      if (rebuild_if_necessary (ip, 0) < 0)
+        return NULL;
+
+      lock_rdwr_rd_acquire (&local_rdwr_lock, saved_mask);
+      map = map_find_from_addr (local_map_list, ip);
+    }
+  if (map)
+    image_name = strdup (map->path);
+  lock_rdwr_release (&local_rdwr_lock, saved_mask);
+
+  return image_name;
+}

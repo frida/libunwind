@@ -48,6 +48,8 @@ int map_local_is_readable (unw_word_t);
 
 int map_local_is_writable (unw_word_t);
 
+char *map_local_get_image_name (unw_word_t);
+
 struct map_info *map_alloc_info (void);
 
 void map_free_info (struct map_info *);
