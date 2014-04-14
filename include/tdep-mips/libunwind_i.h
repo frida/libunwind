@@ -104,37 +104,53 @@ typedef long mips_reg_t;
 static inline int
 dwarf_getfp (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t *val)
 {
-  if (!DWARF_GET_LOC (loc))
+/* ANDROID support update. */
+  unw_fpreg_t *addr = (unw_fpreg_t *) (uintptr_t) DWARF_GET_LOC (loc);
+  if (!addr || !map_local_is_readable ((unw_word_t) (uintptr_t) addr))
     return -1;
-  *val = *(unw_fpreg_t *) (intptr_t) DWARF_GET_LOC (loc);
+
+  *val = *addr;
   return 0;
+/* End of ANDROID update. */
 }
 
 static inline int
 dwarf_putfp (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t val)
 {
-  if (!DWARF_GET_LOC (loc))
+/* ANDROID support update. */
+  unw_fpreg_t *addr = (unw_fpreg_t *) (uintptr_t) DWARF_GET_LOC (loc);
+  if (!addr || !map_local_is_writable ((unw_word_t) (uintptr_t) addr))
     return -1;
-  *(unw_fpreg_t *) (intptr_t) DWARF_GET_LOC (loc) = val;
+
+  *addr = val;
   return 0;
+/* End of ANDROID update. */
 }
 
 static inline int
 dwarf_get (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t *val)
 {
-  if (!DWARF_GET_LOC (loc))
+/* ANDROID support update. */
+  mips_reg_t *addr = (mips_reg_t *) (uintptr_t) DWARF_GET_LOC (loc);
+  if (!addr || !map_local_is_readable ((unw_word_t) (uintptr_t) addr))
     return -1;
-  *val = *(mips_reg_t *) (intptr_t) DWARF_GET_LOC (loc);
+
+  *val = *addr;
   return 0;
+/* End of ANDROID update. */
 }
 
 static inline int
 dwarf_put (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t val)
 {
-  if (!DWARF_GET_LOC (loc))
+/* ANDROID support update. */
+  mips_reg_t *addr = (mips_reg_t *) (uintptr_t) DWARF_GET_LOC (loc);
+  if (!addr || !map_local_is_writable ((unw_word_t) (uintptr_t) addr))
     return -1;
-  *(mips_reg_t *) (intptr_t) DWARF_GET_LOC (loc) = val;
+
+  *addr = val;
   return 0;
+/* End of ANDROID update. */
 }
 
 #else /* !UNW_LOCAL_ONLY */
