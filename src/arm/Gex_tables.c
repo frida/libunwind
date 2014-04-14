@@ -555,7 +555,11 @@ arm_find_proc_info (unw_addr_space_t as, unw_word_t ip,
     }
 
   if (ret < 0)
-    Debug (14, "IP=0x%lx not found\n", (long) ip);
+    /* ANDROID support update. */
+    {
+      Debug (14, "IP=0x%lx not found\n", (long) ip);
+    }
+    /* End of ANDROID update. */
 
   return ret;
 }

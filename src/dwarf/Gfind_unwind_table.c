@@ -150,7 +150,9 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, struct elf_image *ei,
 	}
 
       a = unw_get_accessors (unw_local_addr_space);
-      addr = (unw_word_t) (hdr + 1);
+      /* ANDROID support update. */
+      addr = (unw_word_t) (uintptr_t) (hdr + 1);
+      /* End of ANDROID update. */
 
       /* Fill in a dummy proc_info structure.  We just need to fill in
 	 enough to ensure that dwarf_read_encoded_pointer() can do it's
@@ -205,16 +207,18 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, struct elf_image *ei,
       edi->di_cache.u.rti.name_ptr = 0;
       /* two 32-bit values (ip_offset/fde_offset) per table-entry: */
       edi->di_cache.u.rti.table_len = (fde_count * 8) / sizeof (unw_word_t);
+      /* ANDROID support update. */
       edi->di_cache.u.rti.table_data = ((load_base + peh_hdr->p_vaddr)
-				       + (addr - (unw_word_t) ei->image
+				       + (addr - (uintptr_t) ei->image
 					  - peh_hdr->p_offset));
+      /* End of ANDROID update. */
 
       /* For the binary-search table in the eh_frame_hdr, data-relative
 	 means relative to the start of that section... */
 
       /* ANDROID support update. */
       edi->di_cache.u.rti.segbase = ((load_base + peh_hdr->p_vaddr)
-				    + ((unw_word_t) hdr - (unw_word_t) ei->image
+				    + ((uintptr_t) hdr - (uintptr_t) ei->image
 				       - peh_hdr->p_offset));
       /* End of ANDROID update. */
       found = 1;

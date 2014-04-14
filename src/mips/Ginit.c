@@ -102,7 +102,7 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
         {
 #endif
           Debug (16, "mem[%llx] <- %llx\n", (long long) addr, (long long) *val);
-          *(unw_word_t *) addr = *val;
+          *(unw_word_t *) (uintptr_t) addr = *val;
 #ifdef UNW_LOCAL_ONLY
         }
       else
@@ -121,7 +121,7 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
       if (map_local_is_readable (addr))
         {
 #endif
-          *val = *(unw_word_t *) addr;
+          *val = *(unw_word_t *) (uintptr_t) addr;
           Debug (16, "mem[%llx] -> %llx\n", (long long) addr, (long long) *val);
 #ifdef UNW_LOCAL_ONLY
         }

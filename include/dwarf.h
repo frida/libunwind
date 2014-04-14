@@ -30,6 +30,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 struct dwarf_cursor;	/* forward-declaration */
 struct elf_dyn_info;
+/* ANDROID support update. */
+struct elf_image;
+/* End of ANDROID update. */
 
 #include "dwarf-config.h"
 

@@ -44,7 +44,9 @@ _UPT_access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val,
 #ifdef HAVE_TTRACE
 #	warning No support for ttrace() yet.
 #else
-      ptrace (PTRACE_POKEDATA, pid, addr, *val);
+      /* ANDROID support update. */
+      ptrace (PTRACE_POKEDATA, pid, (void*) (uintptr_t) addr, (void*) (uintptr_t) *val);
+      /* End of ANDROID update. */
       if (errno)
 	return -UNW_EINVAL;
 #endif
@@ -59,15 +61,17 @@ _UPT_access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val,
          This isn't true for this mips abi, so it requires two reads to get
          the entire 64 bit value. */
       long reg1, reg2;
-      reg1 = ptrace (PTRACE_PEEKDATA, pid, (void*)(uintptr_t)addr, 0);
+      reg1 = ptrace (PTRACE_PEEKDATA, pid, (void*) (uintptr_t) addr, 0);
       if (errno)
 	return -UNW_EINVAL;
-      reg2 = ptrace (PTRACE_PEEKDATA, pid, (void*)(uintptr_t)(addr + sizeof(long)), 0);
+      reg2 = ptrace (PTRACE_PEEKDATA, pid, (void*) (uintptr_t) (addr + sizeof(long)), 0);
       if (errno)
 	return -UNW_EINVAL;
-      *val = ((unw_word_t)(reg2) << 32) | (uint32_t)reg1;
+      *val = ((unw_word_t)(reg2) << 32) | (uint32_t) reg1;
 #else
-      *val = ptrace (PTRACE_PEEKDATA, pid, addr, 0);
+      /* ANDROID support update. */
+      *val = ptrace (PTRACE_PEEKDATA, pid, (void*) addr, 0);
+      /* End of ANDROID update. */
       if (errno)
 	return -UNW_EINVAL;
 #endif
