@@ -109,37 +109,49 @@ struct cursor
 static inline int
 dwarf_getfp (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t *val)
 {
-  if (!DWARF_GET_LOC (loc))
+/* ANDROID support update. */
+  unw_fpreg_t *addr = (unw_fpreg_t *) (uintptr_t) DWARF_GET_LOC (loc);
+  if (!addr || !map_local_is_readable ((unw_word_t) (uintptr_t) addr))
     return -1;
-  *val = *(unw_fpreg_t *) DWARF_GET_LOC (loc);
+
+  *val = *addr;
   return 0;
+/* End of ANDROID update. */
 }
 
 static inline int
 dwarf_putfp (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t val)
 {
-  if (!DWARF_GET_LOC (loc))
+/* ANDROID support update. */
+  unw_fpreg_t *addr = (unw_fpreg_t *) (uintptr_t) DWARF_GET_LOC (loc);
+  if (!addr || !map_local_is_writable ((unw_word_t) (uintptr_t) addr))
     return -1;
-  *(unw_fpreg_t *) DWARF_GET_LOC (loc) = val;
+
+  *addr = val;
   return 0;
+/* End of ANDROID update. */
 }
 
 static inline int
 dwarf_get (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t *val)
 {
+/* ANDROID support update. */
   if (!DWARF_GET_LOC (loc))
     return -1;
-  *val = *(unw_word_t *) DWARF_GET_LOC (loc);
-  return 0;
+  return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc), val,
+				   0, c->as_arg);
+/* End of ANDROID update. */
 }
 
 static inline int
 dwarf_put (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t val)
 {
+/* ANDROID support update. */
   if (!DWARF_GET_LOC (loc))
     return -1;
-  *(unw_word_t *) DWARF_GET_LOC (loc) = val;
-  return 0;
+  return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc), &val,
+				   1, c->as_arg);
+/* End of ANDROID update. */
 }
 
 #else /* !UNW_LOCAL_ONLY */
