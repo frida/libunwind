@@ -41,9 +41,6 @@ unw_init_local (unw_cursor_t *cursor, unw_context_t *uc)
 {
   struct cursor *c = (struct cursor *) cursor;
 
-  /* Temporarily fail all local unwinds to prevent segfaults. */
-  return -UNW_EINVAL;
-
   if (!tdep_init_done)
     tdep_init ();
 
