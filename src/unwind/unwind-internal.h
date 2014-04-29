@@ -56,7 +56,10 @@ struct _Unwind_Context {
 
 static _Unwind_Reason_Code ALWAYS_INLINE
 _Unwind_Phase2 (struct _Unwind_Exception *exception_object,
-		struct _Unwind_Context *context)
+		struct _Unwind_Context *context,
+/* ANDROID support update. */
+		int *destroy_map)
+/* End of ANDROID update. */
 {
   _Unwind_Stop_Fn stop = (_Unwind_Stop_Fn) exception_object->private_1;
   uint64_t exception_class = exception_object->exception_class;
@@ -68,6 +71,10 @@ _Unwind_Phase2 (struct _Unwind_Exception *exception_object,
   unw_word_t ip;
   int ret;
 
+  /* ANDROID support update. */
+  *destroy_map = 1;
+  /* End of ANDROID update. */
+
   actions = _UA_CLEANUP_PHASE;
   if (stop)
     actions |= _UA_FORCE_UNWIND;
@@ -77,26 +84,34 @@ _Unwind_Phase2 (struct _Unwind_Exception *exception_object,
       ret = unw_step (&context->cursor);
       if (ret <= 0)
 	{
-	  if (ret == 0)
-	    {
-	      actions |= _UA_END_OF_STACK;
-	      context->end_of_stack = 1;
-	    }
-	  else
-	    return _URC_FATAL_PHASE2_ERROR;
+	   /* ANDROID support update. */
+	   /* Treat any stop as end of stack. */
+	   actions |= _UA_END_OF_STACK;
+	   context->end_of_stack = 1;
+	   /* End of ANDROID support. */
 	}
 
       if (stop)
 	{
+	  /* ANDROID support update. */
+	  /* The stop function might not return, so free any local map. */
+	  unw_map_local_destroy ();
+	  /* End of ANDROID support. */
 	  reason = (*stop) (_U_VERSION, actions, exception_class,
 			    exception_object, context, stop_parameter);
 	  if (reason != _URC_NO_REASON)
-	    /* Stop function may return _URC_FATAL_PHASE2_ERROR if
-	       it's unable to handle end-of-stack condition or
-	       _URC_FATAL_PHASE2_ERROR if something is wrong.  Not
-	       that it matters: the resulting state is indeterminate
-	       anyhow so we must return _URC_FATAL_PHASE2_ERROR... */
-	    return _URC_FATAL_PHASE2_ERROR;
+	    {
+	      /* Stop function may return _URC_FATAL_PHASE2_ERROR if
+	         it's unable to handle end-of-stack condition or
+	         _URC_FATAL_PHASE2_ERROR if something is wrong.  Not
+	         that it matters: the resulting state is indeterminate
+	         anyhow so we must return _URC_FATAL_PHASE2_ERROR... */
+	      *destroy_map = 0;
+	      return _URC_FATAL_PHASE2_ERROR;
+	    }
+	  /* ANDROID support update. */
+	  unw_map_local_create ();
+	  /* End of ANDROID support. */
 	}
 
       if (context->end_of_stack

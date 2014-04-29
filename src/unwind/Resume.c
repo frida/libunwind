@@ -30,11 +30,22 @@ _Unwind_Resume (struct _Unwind_Exception *exception_object)
 {
   struct _Unwind_Context context;
   unw_context_t uc;
+  /* ANDROID support update. */
+  int destroy_map = 1;
+
+  unw_map_local_create ();
 
   if (_Unwind_InitContext (&context, &uc) < 0)
-    abort ();
+    {
+      unw_map_local_destroy ();
+      abort ();
+    }
 
-  _Unwind_Phase2 (exception_object, &context);
+  _Unwind_Phase2 (exception_object, &context, &destroy_map);
+
+  if (destroy_map)
+    unw_map_local_destroy ();
+  /* End ANDROID support. */
   abort ();
 }
 

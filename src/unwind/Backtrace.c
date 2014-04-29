@@ -25,32 +25,36 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #include "unwind-internal.h"
 
+/* ANDROID support update. */
 PROTECTED _Unwind_Reason_Code
 _Unwind_Backtrace (_Unwind_Trace_Fn trace, void *trace_parameter)
 {
   struct _Unwind_Context context;
   unw_context_t uc;
-  int ret;
+  int ret = _URC_NO_REASON;
+
+  unw_map_local_create ();
 
   if (_Unwind_InitContext (&context, &uc) < 0)
-    return _URC_FATAL_PHASE1_ERROR;
-
-  /* Phase 1 (search phase) */
-
-  while (1)
+    ret = _URC_FATAL_PHASE1_ERROR;
+  else
     {
-      if ((ret = unw_step (&context.cursor)) <= 0)
-	{
-	  if (ret == 0)
-	    return _URC_END_OF_STACK;
-	  else
-	    return _URC_FATAL_PHASE1_ERROR;
-	}
+      /* Phase 1 (search phase) */
 
-      if ((*trace) (&context, trace_parameter) != _URC_NO_REASON)
-	return _URC_FATAL_PHASE1_ERROR;
+      while (ret == _URC_NO_REASON)
+        {
+          if (unw_step (&context.cursor) <= 0)
+            ret = _URC_END_OF_STACK;
+          else if ((*trace) (&context, trace_parameter) != _URC_NO_REASON)
+            ret = _URC_FATAL_PHASE1_ERROR;
+        }
     }
+
+  unw_map_local_destroy ();
+
+  return ret;
 }
+/* End of ANDROID update. */
 
 _Unwind_Reason_Code __libunwind_Unwind_Backtrace (_Unwind_Trace_Fn, void *)
      ALIAS (_Unwind_Backtrace);
