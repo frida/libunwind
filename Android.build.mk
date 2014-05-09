@@ -80,6 +80,10 @@ LOCAL_LDLIBS := \
     $($(module)_ldlibs) \
     $($(module)_ldlibs_$(build_type)) \
 
+LOCAL_LDFLAGS := \
+    $($(module)_ldflags) \
+    $($(module)_ldflags_$(build_type)) \
+
 # Translate arm64 to aarch64 in c includes and src files.
 LOCAL_C_INCLUDES_arm64 := \
     $(subst tdep-arm64,tdep-aarch64,$(LOCAL_C_INCLUDES_arm64))
