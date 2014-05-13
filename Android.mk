@@ -46,6 +46,11 @@ common_cflags := \
 common_cflags_target := \
 	-Wno-maybe-uninitialized \
 
+ifeq ($(LOCAL_CLANG),true)
+# src/mi/backtrace.c is misdetected as a bogus header guard by clang 3.5
+common_cflags += -Wno-header-guard
+endif
+
 ifneq ($(debug),true)
 common_cflags += \
 	-DHAVE_CONFIG_H \
