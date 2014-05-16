@@ -57,9 +57,7 @@ _Ux86_64_getcontext:
 	movq %rax, UC_MCONTEXT_GREGS_RAX(%rdi)
 	movq %rcx, UC_MCONTEXT_GREGS_RCX(%rdi)
 
-#if defined __ANDROID__
-	/* The ANDROID ucontext_t structure does not include fpregs_mem. */
-#elif defined __linux__
+#if defined __linux__
 	/* Save fp state (not needed, except for setcontext not
 	   restoring garbage).  */
 	leaq UC_MCONTEXT_FPREGS_MEM(%rdi),%r8

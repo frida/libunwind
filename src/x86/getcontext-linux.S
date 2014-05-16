@@ -60,13 +60,10 @@ _Ux86_getcontext:
 	movw	%fs, %cx
 	movl	%ecx, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_FS_OFF)(%eax)
 
-    /* The ANDROID ucontext_t structure does not include fpregs_mem. */
-#if !defined(__ANDROID__)
 	leal	LINUX_UC_FPREGS_MEM_OFF(%eax), %ecx
 	movl	%ecx, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_FPSTATE_OFF)(%eax)
 	fnstenv	(%ecx)
 	fldenv	(%ecx)
-#endif
 
 	xor	%eax, %eax
 	ret
