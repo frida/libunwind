@@ -18,10 +18,7 @@ LOCAL_PATH := $(call my-dir)
 
 build_host := false
 ifeq ($(HOST_OS),linux)
-ifeq ($(HOST_ARCH),$(filter $(HOST_ARCH),x86 x86_64))
 build_host := true
-my_host_arch := $(HOST_ARCH)
-endif
 endif
 
 # Set to true to enable a debug build of the libraries.
@@ -312,6 +309,7 @@ build_type := target
 build_target := NATIVE_TEST
 include $(LOCAL_PATH)/Android.build.mk
 build_type := host
+libunwind-unit-tests_multilib :=
 include $(LOCAL_PATH)/Android.build.mk
 
 # Run the unit tests built for x86 or x86_64.
