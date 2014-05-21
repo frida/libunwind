@@ -274,8 +274,8 @@ extern pthread_mutex_t _U_dyn_info_list_lock;
 extern long unwi_debug_level;
 
 # ifdef ANDROID
-# include <log/log.h>
 # define LOG_TAG "libunwind"
+# include <log/log.h>
 
 # define Debug(level, format, ...)					\
 do {									\

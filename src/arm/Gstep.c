@@ -290,7 +290,7 @@ unw_step (unw_cursor_t *cursor)
               c->dwarf.loc[UNW_ARM_R12] = ip_loc;
               c->dwarf.loc[UNW_ARM_R11] = fp_loc;
               c->dwarf.pi_valid = 0;
-              Debug(15, "ip=%lx\n", c->dwarf.ip);
+              Debug(15, "ip=%x\n", c->dwarf.ip);
             }
           else
             {
