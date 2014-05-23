@@ -114,7 +114,7 @@ libunwind_src_files := \
 	src/dwarf/Lfde.c \
 	src/dwarf/Lparser.c \
 	src/dwarf/Lpe.c \
-	src/dwarf/Lstep.c \
+	src/dwarf/Lstep_dwarf.c \
 	src/dwarf/Lfind_proc_info-lsb.c \
 	src/dwarf/Lfind_unwind_table.c \
 	src/dwarf/Gexpr.c \
@@ -123,7 +123,7 @@ libunwind_src_files := \
 	src/dwarf/Gfind_unwind_table.c \
 	src/dwarf/Gparser.c \
 	src/dwarf/Gpe.c \
-	src/dwarf/Gstep.c \
+	src/dwarf/Gstep_dwarf.c \
 	src/dwarf/global.c \
 	src/os-common.c \
 	src/os-linux.c \
