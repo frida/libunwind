@@ -50,23 +50,15 @@ LOCAL_C_INCLUDES := \
     $($(module)_c_includes) \
     $($(module)_c_includes_$(build_type)) \
 
-ifneq ($(build_type),host)
-  $(foreach arch,$(libunwind_arches), \
+$(foreach arch,$(libunwind_arches), \
     $(eval LOCAL_C_INCLUDES_$(arch) := $(common_c_includes_$(arch))))
-else
-  $(eval LOCAL_C_INCLUDES += $(common_c_includes_$(my_host_arch)))
-endif
 
 LOCAL_SRC_FILES := \
     $($(module)_src_files) \
     $($(module)_src_files_$(build_type)) \
 
-ifneq ($(build_type),host)
-  $(foreach arch,$(libunwind_arches), \
+$(foreach arch,$(libunwind_arches), \
     $(eval LOCAL_SRC_FILES_$(arch) :=  $($(module)_src_files_$(arch))))
-else
-  $(eval LOCAL_SRC_FILES +=  $($(module)_src_files_$(my_host_arch)))
-endif
 
 LOCAL_STATIC_LIBRARIES := \
     $($(module)_static_libraries) \
