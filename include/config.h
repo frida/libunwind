@@ -2,7 +2,7 @@
 /* include/config.h.in.  Generated from configure.ac by autoheader.  */
 
 /* Block signals before mutex operations */
-#define CONFIG_BLOCK_SIGNALS /**/
+/* #undef CONFIG_BLOCK_SIGNALS */
 
 /* Enable Debug Frame */
 #if defined(__arm__)
