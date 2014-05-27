@@ -194,7 +194,7 @@ libunwind_src_files_x86_64 += \
 	src/x86_64/setcontext.S \
 
 libunwind_src_files += \
-	src/unwind/Backtrace.c \
+	src/unwind/BacktraceWrapper.c \
 	src/unwind/DeleteException.c \
 	src/unwind/FindEnclosingFunction.c \
 	src/unwind/ForcedUnwind.c \
