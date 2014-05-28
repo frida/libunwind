@@ -1,4 +1,4 @@
-/* Linux-specific definitions: */
+/* Linux-specific definitions: (these are the C library offsets and not the kernel ones) */
 
 /* Define various structure offsets to simplify cross-compilation.  */
 
@@ -9,7 +9,13 @@
 #define LINUX_UC_STACK_OFF	0x08
 #define LINUX_UC_MCONTEXT_OFF	0x14
 #define LINUX_UC_SIGMASK_OFF	0x6c
+// Bionic uses 8 bytes for sigmask (just like the kernel) whereas libunwind
+// expects by default a glibc like sigmask (128 bytes).
+#if defined(__ANDROID__)
+#define LINUX_UC_FPREGS_MEM_OFF	0x74
+#else
 #define LINUX_UC_FPREGS_MEM_OFF	0xec
+#endif
 
 /* The struct sigcontext is located at an offset of 4
    from the stack pointer in the signal frame.         */
