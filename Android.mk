@@ -64,9 +64,14 @@ common_c_includes := \
 	$(LOCAL_PATH)/src \
 	$(LOCAL_PATH)/include \
 
-libunwind_arches := arm arm64 mips x86 x86_64
+# Since mips and mips64 use the same source, only generate includes/srcs
+# for the below set of arches.
+generate_arches := arm arm64 mips x86 x86_64
+# The complete list of arches used by Android.build.mk to set arch
+# variables.
+libunwind_arches := $(generate_arches) mips64
 
-$(foreach arch,$(libunwind_arches), \
+$(foreach arch,$(generate_arches), \
   $(eval common_c_includes_$(arch) := $(LOCAL_PATH)/include/tdep-$(arch)))
 
 #-----------------------------------------------------------------------
@@ -127,7 +132,7 @@ libunwind_src_files := \
 	src/Los-common.c \
 
 # Arch specific source files.
-$(foreach arch,$(libunwind_arches), \
+$(foreach arch,$(generate_arches), \
   $(eval libunwind_src_files_$(arch) += \
 	src/$(arch)/is_fpreg.c \
 	src/$(arch)/regname.c \
@@ -152,15 +157,6 @@ $(foreach arch,$(libunwind_arches), \
 	src/$(arch)/Lresume.c \
 	src/$(arch)/Lstep.c \
 	))
-
-# 64-bit architectures
-libunwind_src_files_arm64 += src/elf64.c
-libunwind_src_files_x86_64 += src/elf64.c
-
-# 32-bit architectures
-libunwind_src_files_arm   += src/elf32.c
-libunwind_src_files_mips  += src/elf32.c
-libunwind_src_files_x86   += src/elf32.c
 
 libunwind_src_files_arm += \
 	src/arm/getcontext.S \
@@ -212,6 +208,23 @@ libunwind_src_files += \
 	src/unwind/Resume_or_Rethrow.c \
 	src/unwind/SetGR.c \
 	src/unwind/SetIP.c \
+
+# mips and mips64 use the same sources but define _MIP_SIM differently
+# to change the behavior.
+#   mips uses o32 abi (_MIPS_SIM == _ABIO32).
+#   mips64 uses n64 abi (_MIPS_SIM == _ABI64).
+common_c_includes_mips64 := $(LOCAL_PATH)/include/tdep-mips
+libunwind_src_files_mips64 := $(libunwind_src_files_mips)
+
+# 64-bit architectures
+libunwind_src_files_arm64 += src/elf64.c
+libunwind_src_files_mips64 += src/elf64.c
+libunwind_src_files_x86_64 += src/elf64.c
+
+# 32-bit architectures
+libunwind_src_files_arm   += src/elf32.c
+libunwind_src_files_mips  += src/elf32.c
+libunwind_src_files_x86   += src/elf32.c
 
 libunwind_shared_libraries_target := \
 	libdl \
