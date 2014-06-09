@@ -119,6 +119,13 @@ unw_step (unw_cursor_t *cursor)
   ret = dwarf_step (&c->dwarf);
   Debug(1, "dwarf_step()=%d\n", ret);
 
+  if (ret >= 0)
+    {
+      c->dwarf.frame++;
+      if (c->dwarf.ip >= 4)
+        c->dwarf.ip -= 4;
+    }
+
   if (unlikely (ret == -UNW_ESTOPUNWIND))
     return ret;
 
