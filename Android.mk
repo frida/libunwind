@@ -248,17 +248,13 @@ build_type := target
 build_target := SHARED_LIBRARY
 include $(LOCAL_PATH)/Android.build.mk
 build_type := host
-libunwind_multilib := both
 include $(LOCAL_PATH)/Android.build.mk
-libunwind_multilib :=
 
 build_type := target
 build_target := STATIC_LIBRARY
 include $(LOCAL_PATH)/Android.build.mk
 build_type := host
-libunwind_multilib := both
 include $(LOCAL_PATH)/Android.build.mk
-libunwind_multilib :=
 
 #-----------------------------------------------------------------------
 # libunwind-ptrace shared library
@@ -326,7 +322,6 @@ build_type := target
 build_target := NATIVE_TEST
 include $(LOCAL_PATH)/Android.build.mk
 build_type := host
-libunwind-unit-tests_multilib :=
 include $(LOCAL_PATH)/Android.build.mk
 
 # Run the unit tests built for x86 or x86_64.

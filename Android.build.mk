@@ -18,8 +18,14 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := $(module)
 LOCAL_MODULE_TAGS := $(module_tag)
+ifeq ($(build_type),host)
+# Always make host multilib
+LOCAL_MULTILIB := both
+else
 LOCAL_MULTILIB := $($(module)_multilib)
-ifeq ($(build_type),target)
+endif
+
+ifneq ($(findstring LIBRARY, $(build_target)),LIBRARY)
 ifeq ($(LOCAL_MULTILIB),both)
     LOCAL_MODULE_STEM_32 := $(module)32
     LOCAL_MODULE_STEM_64 := $(module)64
