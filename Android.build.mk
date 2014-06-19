@@ -72,6 +72,10 @@ LOCAL_STATIC_LIBRARIES := \
     $($(module)_static_libraries) \
     $($(module)_static_libraries_$(build_type)) \
 
+LOCAL_WHOLE_STATIC_LIBRARIES := \
+    $($(module)_whole_static_libraries) \
+    $($(module)_whole_static_libraries_$(build_type)) \
+
 LOCAL_SHARED_LIBRARIES := \
     $($(module)_shared_libraries) \
     $($(module)_shared_libraries_$(build_type)) \

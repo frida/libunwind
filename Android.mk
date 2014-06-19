@@ -26,9 +26,6 @@ endif
 # where x controls the verbosity (from 1 to 20).
 debug := false
 
-common_conlyflags := \
-	-Wno-old-style-declaration \
-
 common_cflags := \
 	-Wno-unused-parameter \
 	-Werror \
@@ -189,26 +186,6 @@ libunwind_src_files_x86_64 += \
 	src/x86_64/Los-linux.c \
 	src/x86_64/setcontext.S \
 
-libunwind_src_files += \
-	src/unwind/BacktraceWrapper.c \
-	src/unwind/DeleteException.c \
-	src/unwind/FindEnclosingFunction.c \
-	src/unwind/ForcedUnwind.c \
-	src/unwind/GetBSP.c \
-	src/unwind/GetCFA.c \
-	src/unwind/GetDataRelBase.c \
-	src/unwind/GetGR.c \
-	src/unwind/GetIP.c \
-	src/unwind/GetIPInfo.c \
-	src/unwind/GetLanguageSpecificData.c \
-	src/unwind/GetRegionStart.c \
-	src/unwind/GetTextRelBase.c \
-	src/unwind/RaiseException.c \
-	src/unwind/Resume.c \
-	src/unwind/Resume_or_Rethrow.c \
-	src/unwind/SetGR.c \
-	src/unwind/SetIP.c \
-
 # mips and mips64 use the same sources but define _MIP_SIM differently
 # to change the behavior.
 #   mips uses o32 abi (_MIPS_SIM == _ABIO32).
@@ -249,7 +226,6 @@ build_target := SHARED_LIBRARY
 include $(LOCAL_PATH)/Android.build.mk
 build_type := host
 include $(LOCAL_PATH)/Android.build.mk
-
 build_type := target
 build_target := STATIC_LIBRARY
 include $(LOCAL_PATH)/Android.build.mk
@@ -294,6 +270,42 @@ module := libunwind-ptrace
 module_tag := optional
 build_type := target
 build_target := SHARED_LIBRARY
+include $(LOCAL_PATH)/Android.build.mk
+build_type := host
+include $(LOCAL_PATH)/Android.build.mk
+
+#-----------------------------------------------------------------------
+# libunwindbacktrace static library
+#-----------------------------------------------------------------------
+libunwindbacktrace_src_files += \
+	src/unwind/BacktraceWrapper.c \
+	src/unwind/DeleteException.c \
+	src/unwind/FindEnclosingFunction.c \
+	src/unwind/ForcedUnwind.c \
+	src/unwind/GetBSP.c \
+	src/unwind/GetCFA.c \
+	src/unwind/GetDataRelBase.c \
+	src/unwind/GetGR.c \
+	src/unwind/GetIP.c \
+	src/unwind/GetIPInfo.c \
+	src/unwind/GetLanguageSpecificData.c \
+	src/unwind/GetRegionStart.c \
+	src/unwind/GetTextRelBase.c \
+	src/unwind/RaiseException.c \
+	src/unwind/Resume.c \
+	src/unwind/Resume_or_Rethrow.c \
+	src/unwind/SetGR.c \
+	src/unwind/SetIP.c \
+
+libunwindbacktrace_cflags += \
+	-Wno-old-style-declaration \
+	-fvisibility=hidden \
+
+module := libunwindbacktrace
+module_tag := optional
+build_type := target
+build_target := STATIC_LIBRARY
+libunwindbacktrace_whole_static_libraries := libunwind
 include $(LOCAL_PATH)/Android.build.mk
 build_type := host
 include $(LOCAL_PATH)/Android.build.mk
