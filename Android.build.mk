@@ -19,6 +19,12 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := $(module)
 LOCAL_MODULE_TAGS := $(module_tag)
 ifeq ($(build_type),host)
+# Flags for host clang builds
+LOCAL_CFLAGS := -Wno-header-guard \
+    -Wno-absolute-value \
+    -Wno-unknown-warning-option \
+    -Wno-extern-c-compat
+
 # Always make host multilib
 LOCAL_MULTILIB := both
 else
@@ -36,7 +42,7 @@ LOCAL_ADDITIONAL_DEPENDENCIES := \
     $(LOCAL_PATH)/Android.mk \
     $(LOCAL_PATH)/Android.build.mk \
 
-LOCAL_CFLAGS := \
+LOCAL_CFLAGS += \
     $(common_cflags) \
     $(common_cflags_$(build_type)) \
     $($(module)_cflags) \
