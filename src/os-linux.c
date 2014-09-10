@@ -57,6 +57,16 @@ map_create_list (pid_t pid)
       cur_map->ei.size = 0;
       cur_map->ei.image = NULL;
 
+      /* Indicate mapped memory of devices is special and should not
+         be read or written. Use a special flag instead of zeroing the
+         flags to indicate that the maps do not need to be rebuilt if
+         any values ever wind up in these special maps.
+         /dev/ashmem/... maps are special and don't have any restrictions,
+         so don't mark them as device memory.  */
+      if (strncmp ("/dev/", cur_map->path, 5) == 0
+          && strncmp ("ashmem/", cur_map->path + 5, 7) != 0)
+        cur_map->flags |= MAP_FLAGS_DEVICE_MEM;
+
       map_list = cur_map;
     }
 

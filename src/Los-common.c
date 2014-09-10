@@ -126,7 +126,14 @@ is_flag_set (unw_word_t addr, int flag)
   lock_rdwr_rd_acquire (&local_rdwr_lock, saved_mask);
   map = map_find_from_addr (local_map_list, addr);
   if (map != NULL)
-    ret = map->flags & flag;
+    {
+      if (map->flags & MAP_FLAGS_DEVICE_MEM)
+        {
+          lock_rdwr_release (&local_rdwr_lock, saved_mask);
+          return 0;
+        }
+      ret = map->flags & flag;
+    }
   lock_rdwr_release (&local_rdwr_lock, saved_mask);
 
   if (!ret && rebuild_if_necessary (addr, flag) == 0)
