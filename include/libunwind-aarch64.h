@@ -56,6 +56,9 @@ typedef long double unw_tdep_fpreg_t;
 typedef struct
   {
     /* no aarch64-specific auxiliary proc-info */
+    /* ANDROID support update. */
+    char __reserved;
+    /* End of ANDROID update. */
   }
 unw_tdep_proc_info_t;
 
@@ -165,6 +168,9 @@ aarch64_regnum_t;
 typedef struct unw_tdep_save_loc
   {
     /* Additional target-dependent info on a save location.  */
+    /* ANDROID support update. */
+    char __reserved;
+    /* End of ANDROID update. */
   }
 unw_tdep_save_loc_t;
 

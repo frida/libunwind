@@ -83,6 +83,9 @@ unw_tdep_fpreg_t;
 typedef struct
   {
     /* no ia64-specific auxiliary proc-info */
+    /* ANDROID support update. */
+    char __reserved;
+    /* End of ANDROID update. */
   }
 unw_tdep_proc_info_t;
 
