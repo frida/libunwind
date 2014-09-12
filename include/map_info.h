@@ -25,6 +25,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #ifndef map_info_h
 #define map_info_h
 
+/* Must not conflict with PROT_{NONE,READ,WRITE}. */
+#define MAP_FLAGS_DEVICE_MEM  0x8000
+
 struct map_info
   {
     uintptr_t start;
