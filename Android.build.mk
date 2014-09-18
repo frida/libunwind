@@ -48,6 +48,12 @@ LOCAL_CFLAGS += \
     $($(module)_cflags) \
     $($(module)_cflags_$(build_type)) \
 
+LOCAL_CLANG_CFLAGS += \
+    $(common_clang_cflags) \
+    $(common_clang_cflags_$(build_type)) \
+    $($(module)_clang_cflags) \
+    $($(module)_clang_cflags_$(build_type)) \
+
 LOCAL_CONLYFLAGS += \
     $(common_conlyflags) \
     $(common_conlyflags_$(build_type)) \
