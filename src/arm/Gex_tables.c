@@ -510,28 +510,7 @@ arm_find_proc_info (unw_addr_space_t as, unw_word_t ip,
 
   if (UNW_TRY_METHOD(UNW_ARM_METHOD_DWARF))
     {
-      struct dwarf_callback_data cb_data;
-
-      memset (&cb_data, 0, sizeof (cb_data));
-      cb_data.ip = ip;
-      cb_data.pi = pi;
-      cb_data.need_unwind_info = need_unwind_info;
-      cb_data.di.format = -1;
-      cb_data.di_debug.format = -1;
-
-      SIGPROCMASK (SIG_SETMASK, &unwi_full_mask, &saved_mask);
-      ret = dl_iterate_phdr (dwarf_callback, &cb_data);
-      SIGPROCMASK (SIG_SETMASK, &saved_mask, NULL);
-
-      if (cb_data.single_fde)
-	/* already got the result in *pi */
-	return 0;
-
-      if (cb_data.di_debug.format != -1)
-	ret = tdep_search_unwind_table (as, ip, &cb_data.di_debug, pi,
-					need_unwind_info, arg);
-      else
-	ret = -UNW_ENOINFO;
+      ret = dwarf_find_proc_info (as, ip, pi, need_unwind_info, arg);
     }
 
   if (ret < 0 && UNW_TRY_METHOD (UNW_ARM_METHOD_EXIDX))
