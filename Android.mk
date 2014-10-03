@@ -38,7 +38,10 @@ common_cflags_target := \
 	-Wno-maybe-uninitialized \
 
 # src/mi/backtrace.c is misdetected as a bogus header guard by clang 3.5
-common_clang_cflags += -Wno-header-guard
+# src/x86_64/Gstash_frame.c has unnecessary calls to labs.
+common_clang_cflags += \
+    -Wno-header-guard \
+    -Wno-absolute-value \
 
 ifneq ($(debug),true)
 common_cflags += \
