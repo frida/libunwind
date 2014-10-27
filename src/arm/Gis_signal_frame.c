@@ -66,7 +66,9 @@ unw_is_signal_frame (unw_cursor_t *cursor)
   ip = c->dwarf.ip;
 
   if ((ret = (*a->access_mem) (as, ip, &w0, 0, arg)) < 0)
-    return ret;
+  /* ANDROID support update. */
+    return 0;
+  /* End ANDROID update. */
 
   /* Return 1 if the IP points to a non-RT sigreturn sequence.  */
   if (w0 == MOV_R7_SIGRETURN || w0 == ARM_SIGRETURN || w0 == THUMB_SIGRETURN)
