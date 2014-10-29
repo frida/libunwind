@@ -107,17 +107,41 @@ PROTECTED int
 unw_step (unw_cursor_t *cursor)
 {
   struct cursor *c = (struct cursor *) cursor;
-  int ret;
+  int ret = -UNW_ENOINFO;
 
   Debug (1, "(cursor=%p, ip=0x%016lx, cfa=0x%016lx))\n",
 	 c, c->dwarf.ip, c->dwarf.cfa);
 
   /* Check if this is a signal frame. */
   if (unw_is_signal_frame (cursor))
-    return unw_handle_signal_frame (cursor);
+    /* ANDROID support update. */
+    ret = unw_handle_signal_frame (cursor);
+    /* End ANDROID update. */
 
-  ret = dwarf_step (&c->dwarf);
-  Debug(1, "dwarf_step()=%d\n", ret);
+  /* ANDROID support update. */
+  if (ret < 0)
+    {
+      ret = dwarf_step (&c->dwarf);
+      Debug(1, "dwarf_step()=%d\n", ret);
+    }
+
+  if (ret < 0 && c->dwarf.frame == 0)
+    {
+      /* If this is the first frame, the code may be executing garbage
+       * in the middle of nowhere. In this case, try using the lr as
+       * the pc.
+       */
+      unw_word_t lr;
+      if (dwarf_get(&c->dwarf, c->dwarf.loc[UNW_AARCH64_X30], &lr) >= 0)
+        {
+          if (lr != c->dwarf.ip)
+            {
+              ret = 1;
+              c->dwarf.ip = lr;
+            }
+        }
+    }
+  /* End ANDROID update. */
 
   if (ret >= 0)
     {
