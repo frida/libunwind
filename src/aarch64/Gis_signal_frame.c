@@ -54,7 +54,9 @@ unw_is_signal_frame (unw_cursor_t *cursor)
 
   ret = (*a->access_mem) (as, ip, &w0, 0, arg);
   if (ret < 0)
-    return ret;
+  /* ANDROID support update. */
+    return 0;
+  /* End ANDROID update. */
 
   /* FIXME: distinguish 32bit insn vs 64bit registers.  */
   if (w0 != 0xd4000001d2801168)
