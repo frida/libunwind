@@ -101,6 +101,8 @@ LOCAL_C_INCLUDES_arm64 := \
 LOCAL_SRC_FILES_arm64 := \
     $(subst src/arm64,src/aarch64,$(LOCAL_SRC_FILES_arm64))
 
+LOCAL_ADDRESS_SANITIZER := false
+
 ifeq ($(build_type),target)
   include $(BUILD_$(build_target))
 endif
