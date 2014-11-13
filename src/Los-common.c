@@ -30,10 +30,18 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 extern struct map_info *local_map_list;
 extern lock_rdwr_var (local_rdwr_lock);
 
+static pthread_once_t local_rdwr_lock_init = PTHREAD_ONCE_INIT;
+
+static void
+map_local_init_once (void)
+{
+  lock_rdwr_init (&local_rdwr_lock);
+}
+
 HIDDEN void
 map_local_init (void)
 {
-  lock_rdwr_init (&local_rdwr_lock);
+  pthread_once (&local_rdwr_lock_init, map_local_init_once);
 }
 
 static void
