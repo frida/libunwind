@@ -283,7 +283,9 @@ HIDDEN int
 x86_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
 {
   struct cursor *c = (struct cursor *) cursor;
+#if !defined(__ANDROID__)
   ucontext_t *uc = c->uc;
+#endif
 
   /* Ensure c->pi is up-to-date.  On x86, it's relatively common to be
      missing DWARF unwind info.  We don't want to fail in that case,
@@ -294,6 +296,7 @@ x86_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
   if (unlikely (c->sigcontext_format != X86_SCF_NONE))
     {
       struct sigcontext *sc = (struct sigcontext *) c->sigcontext_addr;
+      (void)sc;
 
       Debug (8, "resuming at ip=%x via sigreturn(%p)\n", c->dwarf.ip, sc);
 
