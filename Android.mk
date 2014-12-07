@@ -214,6 +214,9 @@ libunwind_ldlibs_host := \
 	-lc \
 	-lpthread \
 
+libunwind_export_c_include_dirs := \
+	$(LOCAL_PATH)/include
+
 ifeq ($(debug),true)
 libunwind_shared_libraries += \
 	liblog \
@@ -260,6 +263,9 @@ libunwind-ptrace_ldflags_host := \
 libunwind-ptrace_ldlibs_host := \
 	-lc \
 	-lpthread \
+
+libunwind-ptrace_export_c_include_dirs := \
+	$(LOCAL_PATH)/include
 
 ifeq ($(debug),true)
 libunwind-ptrace_shared_libraries += \
