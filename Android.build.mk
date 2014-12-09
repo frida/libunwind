@@ -64,6 +64,9 @@ LOCAL_C_INCLUDES := \
     $($(module)_c_includes) \
     $($(module)_c_includes_$(build_type)) \
 
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+    $($(module)_export_c_include_dirs)
+
 $(foreach arch,$(libunwind_arches), \
     $(eval LOCAL_C_INCLUDES_$(arch) := $(common_c_includes_$(arch))))
 
