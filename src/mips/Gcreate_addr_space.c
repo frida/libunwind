@@ -59,10 +59,11 @@ unw_create_addr_space (unw_accessors_t *a, int byte_order)
 
 #if _MIPS_SIM == _ABIO32
   as->abi = UNW_MIPS_ABI_O32;
+  as->addr_size = 4;
 #else
   as->abi = UNW_MIPS_ABI_N64;
+  as->addr_size = 8;
 #endif
-  as->addr_size = 4;
 
   return as;
 #endif
