@@ -44,7 +44,7 @@ unw_handle_signal_frame (unw_cursor_t *cursor)
 	    LINUX_UC_MCONTEXT_OFF;
     break;
   case 2:
-    sc_addr = sp_addr;
+    sc_addr = sp_addr + LINUX_UC_MCONTEXT_OFF;
     break;
   default:
     return -UNW_EUNSPEC;
