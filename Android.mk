@@ -26,6 +26,9 @@ endif
 # where x controls the verbosity (from 1 to 20).
 debug := false
 
+common_cppflags := \
+	-Wno-old-style-cast \
+
 common_cflags := \
 	-Wno-unused-parameter \
 	-Werror \
