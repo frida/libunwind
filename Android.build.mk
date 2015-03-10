@@ -16,19 +16,19 @@
 
 include $(CLEAR_VARS)
 
-LOCAL_MODULE := $(module)
-LOCAL_MODULE_TAGS := $(module_tag)
-ifeq ($(build_type),host)
+LOCAL_MODULE := $(libunwind_module)
+LOCAL_MODULE_TAGS := $(libunwind_module_tag)
+ifeq ($(libunwind_build_type),host)
 # Always make host multilib
 LOCAL_MULTILIB := both
 else
-LOCAL_MULTILIB := $($(module)_multilib)
+LOCAL_MULTILIB := $($(libunwind_module)_multilib)
 endif
 
-ifneq ($(findstring LIBRARY, $(build_target)),LIBRARY)
+ifneq ($(findstring LIBRARY, $(libunwind_build_target)),LIBRARY)
 ifeq ($(LOCAL_MULTILIB),both)
-    LOCAL_MODULE_STEM_32 := $(module)32
-    LOCAL_MODULE_STEM_64 := $(module)64
+    LOCAL_MODULE_STEM_32 := $(libunwind_module)32
+    LOCAL_MODULE_STEM_64 := $(libunwind_module)64
 endif
 endif
 
@@ -37,65 +37,65 @@ LOCAL_ADDITIONAL_DEPENDENCIES := \
     $(LOCAL_PATH)/Android.build.mk \
 
 LOCAL_CFLAGS += \
-    $(common_cflags) \
-    $(common_cflags_$(build_type)) \
-    $($(module)_cflags) \
-    $($(module)_cflags_$(build_type)) \
+    $(libunwind_common_cflags) \
+    $(libunwind_common_cflags_$(libunwind_build_type)) \
+    $($(libunwind_module)_cflags) \
+    $($(libunwind_module)_cflags_$(libunwind_build_type)) \
 
 LOCAL_CLANG_CFLAGS += \
-    $(common_clang_cflags) \
-    $(common_clang_cflags_$(build_type)) \
-    $($(module)_clang_cflags) \
-    $($(module)_clang_cflags_$(build_type)) \
+    $(libunwind_common_clang_cflags) \
+    $(libunwind_common_clang_cflags_$(libunwind_build_type)) \
+    $($(libunwind_module)_clang_cflags) \
+    $($(libunwind_module)_clang_cflags_$(libunwind_build_type)) \
 
 LOCAL_CONLYFLAGS += \
-    $(common_conlyflags) \
-    $(common_conlyflags_$(build_type)) \
-    $($(module)_conlyflags) \
-    $($(module)_conlyflags_$(build_type)) \
+    $(libunwind_common_conlyflags) \
+    $(libunwind_common_conlyflags_$(libunwind_build_type)) \
+    $($(libunwind_module)_conlyflags) \
+    $($(libunwind_module)_conlyflags_$(libunwind_build_type)) \
 
 LOCAL_CPPFLAGS += \
-    $(common_cppflags) \
-    $($(module)_cppflags) \
-    $($(module)_cppflags_$(build_type)) \
+    $(libunwind_common_cppflags) \
+    $($(libunwind_module)_cppflags) \
+    $($(libunwind_module)_cppflags_$(libunwind_build_type)) \
 
 LOCAL_C_INCLUDES := \
-    $(common_c_includes) \
-    $($(module)_c_includes) \
-    $($(module)_c_includes_$(build_type)) \
+    $(libunwind_common_c_includes) \
+    $($(libunwind_module)_c_includes) \
+    $($(libunwind_module)_c_includes_$(libunwind_build_type)) \
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
-    $($(module)_export_c_include_dirs)
+    $($(libunwind_module)_export_c_include_dirs)
 
 $(foreach arch,$(libunwind_arches), \
-    $(eval LOCAL_C_INCLUDES_$(arch) := $(common_c_includes_$(arch))))
+    $(eval LOCAL_C_INCLUDES_$(arch) := $(libunwind_common_c_includes_$(arch))))
 
 LOCAL_SRC_FILES := \
-    $($(module)_src_files) \
-    $($(module)_src_files_$(build_type)) \
+    $($(libunwind_module)_src_files) \
+    $($(libunwind_module)_src_files_$(build_type)) \
 
 $(foreach arch,$(libunwind_arches), \
-    $(eval LOCAL_SRC_FILES_$(arch) :=  $($(module)_src_files_$(arch))))
+    $(eval LOCAL_SRC_FILES_$(arch) :=  $($(libunwind_module)_src_files_$(arch))))
 
 LOCAL_STATIC_LIBRARIES := \
-    $($(module)_static_libraries) \
-    $($(module)_static_libraries_$(build_type)) \
+    $($(libunwind_module)_static_libraries) \
+    $($(libunwind_module)_static_libraries_$(libunwind_build_type)) \
 
 LOCAL_WHOLE_STATIC_LIBRARIES := \
-    $($(module)_whole_static_libraries) \
-    $($(module)_whole_static_libraries_$(build_type)) \
+    $($(libunwind_module)_whole_static_libraries) \
+    $($(libunwind_module)_whole_static_libraries_$(libunwind_build_type)) \
 
 LOCAL_SHARED_LIBRARIES := \
-    $($(module)_shared_libraries) \
-    $($(module)_shared_libraries_$(build_type)) \
+    $($(libunwind_module)_shared_libraries) \
+    $($(libunwind_module)_shared_libraries_$(libunwind_build_type)) \
 
 LOCAL_LDLIBS := \
-    $($(module)_ldlibs) \
-    $($(module)_ldlibs_$(build_type)) \
+    $($(libunwind_module)_ldlibs) \
+    $($(libunwind_module)_ldlibs_$(libunwind_build_type)) \
 
 LOCAL_LDFLAGS := \
-    $($(module)_ldflags) \
-    $($(module)_ldflags_$(build_type)) \
+    $($(libunwind_module)_ldflags) \
+    $($(libunwind_module)_ldflags_$(libunwind_build_type)) \
 
 # Translate arm64 to aarch64 in c includes and src files.
 LOCAL_C_INCLUDES_arm64 := \
@@ -106,13 +106,13 @@ LOCAL_SRC_FILES_arm64 := \
 
 LOCAL_ADDRESS_SANITIZER := false
 
-ifeq ($(build_type),target)
-  include $(BUILD_$(build_target))
+ifeq ($(libunwind_build_type),target)
+  include $(BUILD_$(libunwind_build_target))
 endif
 
-ifeq ($(build_type),host)
+ifeq ($(libunwind_build_type),host)
   # Only build if host builds are supported.
-  ifeq ($(build_host),true)
-    include $(BUILD_HOST_$(build_target))
+  ifeq ($(libunwind_build_host),true)
+    include $(BUILD_HOST_$(libunwind_build_target))
   endif
 endif

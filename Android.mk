@@ -16,185 +16,185 @@
 
 LOCAL_PATH := $(call my-dir)
 
-build_host := false
+libunwind_build_host := false
 ifeq ($(HOST_OS),linux)
-build_host := true
+libunwind_build_host := true
 endif
 
 # Set to true to enable a debug build of the libraries.
 # To control what is logged, set the environment variable UNW_DEBUG_LEVEL=x,
 # where x controls the verbosity (from 1 to 20).
-debug := false
+libunwind_debug := false
 
-common_cppflags := \
-	-Wno-old-style-cast \
+libunwind_common_cppflags := \
+    -Wno-old-style-cast \
 
-common_cflags := \
-	-Wno-unused-parameter \
-	-Werror \
+libunwind_common_cflags := \
+    -Wno-unused-parameter \
+    -Werror \
 
 # gcc 4.8 appears to be overeager declaring that a variable is uninitialized,
 # under certain circumstances. Turn off this warning only for target so that
 # coverage is still present for the host code. When the entire build system
 # is switched to 4.9, then this can be removed.
-common_cflags_target := \
-	-Wno-maybe-uninitialized \
+libunwind_common_cflags_target := \
+    -Wno-maybe-uninitialized \
 
 # src/mi/backtrace.c is misdetected as a bogus header guard by clang 3.5
 # src/x86_64/Gstash_frame.c has unnecessary calls to labs.
-common_clang_cflags += \
+libunwind_common_clang_cflags += \
     -Wno-header-guard \
     -Wno-absolute-value \
 
 ifneq ($(debug),true)
-common_cflags += \
-	-DHAVE_CONFIG_H \
-	-DNDEBUG \
-	-D_GNU_SOURCE \
+libunwind_common_cflags += \
+    -DHAVE_CONFIG_H \
+    -DNDEBUG \
+    -D_GNU_SOURCE \
 
 else
-common_cflags += \
-	-DHAVE_CONFIG_H \
-	-DDEBUG \
-	-D_GNU_SOURCE \
-	-U_FORTIFY_SOURCE \
+libunwind_common_cflags += \
+    -DHAVE_CONFIG_H \
+    -DDEBUG \
+    -D_GNU_SOURCE \
+    -U_FORTIFY_SOURCE \
 
 endif
 
-common_c_includes := \
-	$(LOCAL_PATH)/src \
-	$(LOCAL_PATH)/include \
+libunwind_common_c_includes := \
+    $(LOCAL_PATH)/src \
+    $(LOCAL_PATH)/include \
 
 # Since mips and mips64 use the same source, only generate includes/srcs
 # for the below set of arches.
-generate_arches := arm arm64 mips x86 x86_64
+libunwind_generate_arches := arm arm64 mips x86 x86_64
 # The complete list of arches used by Android.build.mk to set arch
 # variables.
-libunwind_arches := $(generate_arches) mips64
+libunwind_arches := $(libunwind_generate_arches) mips64
 
-$(foreach arch,$(generate_arches), \
-  $(eval common_c_includes_$(arch) := $(LOCAL_PATH)/include/tdep-$(arch)))
+$(foreach arch,$(libunwind_generate_arches), \
+  $(eval libunwind_common_c_includes_$(arch) := $(LOCAL_PATH)/include/tdep-$(arch)))
 
 #-----------------------------------------------------------------------
 # libunwind shared library
 #-----------------------------------------------------------------------
 libunwind_src_files := \
-	src/mi/init.c \
-	src/mi/flush_cache.c \
-	src/mi/mempool.c \
-	src/mi/strerror.c \
-	src/mi/backtrace.c \
-	src/mi/dyn-cancel.c \
-	src/mi/dyn-info-list.c \
-	src/mi/dyn-register.c \
-	src/mi/map.c \
-	src/mi/Lmap.c \
-	src/mi/Ldyn-extract.c \
-	src/mi/Lfind_dynamic_proc_info.c \
-	src/mi/Lget_proc_info_by_ip.c \
-	src/mi/Lget_proc_name.c \
-	src/mi/Lput_dynamic_unwind_info.c \
-	src/mi/Ldestroy_addr_space.c \
-	src/mi/Lget_reg.c \
-	src/mi/Lset_reg.c \
-	src/mi/Lget_fpreg.c \
-	src/mi/Lset_fpreg.c \
-	src/mi/Lset_caching_policy.c \
-	src/mi/Gdyn-extract.c \
-	src/mi/Gdyn-remote.c \
-	src/mi/Gfind_dynamic_proc_info.c \
-	src/mi/Gget_accessors.c \
-	src/mi/Gget_proc_info_by_ip.c \
-	src/mi/Gget_proc_name.c \
-	src/mi/Gput_dynamic_unwind_info.c \
-	src/mi/Gdestroy_addr_space.c \
-	src/mi/Gget_reg.c \
-	src/mi/Gset_reg.c \
-	src/mi/Gget_fpreg.c \
-	src/mi/Gset_fpreg.c \
-	src/mi/Gset_caching_policy.c \
-	src/dwarf/Lexpr.c \
-	src/dwarf/Lfde.c \
-	src/dwarf/Lparser.c \
-	src/dwarf/Lpe.c \
-	src/dwarf/Lstep_dwarf.c \
-	src/dwarf/Lfind_proc_info-lsb.c \
-	src/dwarf/Lfind_unwind_table.c \
-	src/dwarf/Gexpr.c \
-	src/dwarf/Gfde.c \
-	src/dwarf/Gfind_proc_info-lsb.c \
-	src/dwarf/Gfind_unwind_table.c \
-	src/dwarf/Gparser.c \
-	src/dwarf/Gpe.c \
-	src/dwarf/Gstep_dwarf.c \
-	src/dwarf/global.c \
-	src/os-common.c \
-	src/os-linux.c \
-	src/Los-common.c \
+    src/mi/init.c \
+    src/mi/flush_cache.c \
+    src/mi/mempool.c \
+    src/mi/strerror.c \
+    src/mi/backtrace.c \
+    src/mi/dyn-cancel.c \
+    src/mi/dyn-info-list.c \
+    src/mi/dyn-register.c \
+    src/mi/map.c \
+    src/mi/Lmap.c \
+    src/mi/Ldyn-extract.c \
+    src/mi/Lfind_dynamic_proc_info.c \
+    src/mi/Lget_proc_info_by_ip.c \
+    src/mi/Lget_proc_name.c \
+    src/mi/Lput_dynamic_unwind_info.c \
+    src/mi/Ldestroy_addr_space.c \
+    src/mi/Lget_reg.c \
+    src/mi/Lset_reg.c \
+    src/mi/Lget_fpreg.c \
+    src/mi/Lset_fpreg.c \
+    src/mi/Lset_caching_policy.c \
+    src/mi/Gdyn-extract.c \
+    src/mi/Gdyn-remote.c \
+    src/mi/Gfind_dynamic_proc_info.c \
+    src/mi/Gget_accessors.c \
+    src/mi/Gget_proc_info_by_ip.c \
+    src/mi/Gget_proc_name.c \
+    src/mi/Gput_dynamic_unwind_info.c \
+    src/mi/Gdestroy_addr_space.c \
+    src/mi/Gget_reg.c \
+    src/mi/Gset_reg.c \
+    src/mi/Gget_fpreg.c \
+    src/mi/Gset_fpreg.c \
+    src/mi/Gset_caching_policy.c \
+    src/dwarf/Lexpr.c \
+    src/dwarf/Lfde.c \
+    src/dwarf/Lparser.c \
+    src/dwarf/Lpe.c \
+    src/dwarf/Lstep_dwarf.c \
+    src/dwarf/Lfind_proc_info-lsb.c \
+    src/dwarf/Lfind_unwind_table.c \
+    src/dwarf/Gexpr.c \
+    src/dwarf/Gfde.c \
+    src/dwarf/Gfind_proc_info-lsb.c \
+    src/dwarf/Gfind_unwind_table.c \
+    src/dwarf/Gparser.c \
+    src/dwarf/Gpe.c \
+    src/dwarf/Gstep_dwarf.c \
+    src/dwarf/global.c \
+    src/os-common.c \
+    src/os-linux.c \
+    src/Los-common.c \
 
 # Arch specific source files.
-$(foreach arch,$(generate_arches), \
+$(foreach arch,$(libunwind_generate_arches), \
   $(eval libunwind_src_files_$(arch) += \
-	src/$(arch)/is_fpreg.c \
-	src/$(arch)/regname.c \
-	src/$(arch)/Gcreate_addr_space.c \
-	src/$(arch)/Gget_proc_info.c \
-	src/$(arch)/Gget_save_loc.c \
-	src/$(arch)/Gglobal.c \
-	src/$(arch)/Ginit.c \
-	src/$(arch)/Ginit_local.c \
-	src/$(arch)/Ginit_remote.c \
-	src/$(arch)/Gregs.c \
-	src/$(arch)/Gresume.c \
-	src/$(arch)/Gstep.c \
-	src/$(arch)/Lcreate_addr_space.c \
-	src/$(arch)/Lget_proc_info.c \
-	src/$(arch)/Lget_save_loc.c \
-	src/$(arch)/Lglobal.c \
-	src/$(arch)/Linit.c \
-	src/$(arch)/Linit_local.c \
-	src/$(arch)/Linit_remote.c \
-	src/$(arch)/Lregs.c \
-	src/$(arch)/Lresume.c \
-	src/$(arch)/Lstep.c \
-	))
+    src/$(arch)/is_fpreg.c \
+    src/$(arch)/regname.c \
+    src/$(arch)/Gcreate_addr_space.c \
+    src/$(arch)/Gget_proc_info.c \
+    src/$(arch)/Gget_save_loc.c \
+    src/$(arch)/Gglobal.c \
+    src/$(arch)/Ginit.c \
+    src/$(arch)/Ginit_local.c \
+    src/$(arch)/Ginit_remote.c \
+    src/$(arch)/Gregs.c \
+    src/$(arch)/Gresume.c \
+    src/$(arch)/Gstep.c \
+    src/$(arch)/Lcreate_addr_space.c \
+    src/$(arch)/Lget_proc_info.c \
+    src/$(arch)/Lget_save_loc.c \
+    src/$(arch)/Lglobal.c \
+    src/$(arch)/Linit.c \
+    src/$(arch)/Linit_local.c \
+    src/$(arch)/Linit_remote.c \
+    src/$(arch)/Lregs.c \
+    src/$(arch)/Lresume.c \
+    src/$(arch)/Lstep.c \
+    ))
 
 libunwind_src_files_arm += \
-	src/arm/getcontext.S \
-	src/arm/Gis_signal_frame.c \
-	src/arm/Gex_tables.c \
-	src/arm/Lis_signal_frame.c \
-	src/arm/Lex_tables.c \
+    src/arm/getcontext.S \
+    src/arm/Gis_signal_frame.c \
+    src/arm/Gex_tables.c \
+    src/arm/Lis_signal_frame.c \
+    src/arm/Lex_tables.c \
 
 libunwind_src_files_arm64 += \
-	src/aarch64/Gis_signal_frame.c \
-	src/aarch64/Lis_signal_frame.c \
+    src/aarch64/Gis_signal_frame.c \
+    src/aarch64/Lis_signal_frame.c \
 
 libunwind_src_files_mips += \
-	src/mips/getcontext-android.S \
-	src/mips/Gis_signal_frame.c \
-	src/mips/Lis_signal_frame.c \
+    src/mips/getcontext-android.S \
+    src/mips/Gis_signal_frame.c \
+    src/mips/Lis_signal_frame.c \
 
 libunwind_src_files_x86 += \
-	src/x86/getcontext-linux.S \
-	src/x86/Gos-linux.c \
-	src/x86/Los-linux.c \
+    src/x86/getcontext-linux.S \
+    src/x86/Gos-linux.c \
+    src/x86/Los-linux.c \
 
 libunwind_src_files_x86_64 += \
-	src/x86_64/getcontext.S \
-	src/x86_64/Gstash_frame.c \
-	src/x86_64/Gtrace.c \
-	src/x86_64/Gos-linux.c \
-	src/x86_64/Lstash_frame.c \
-	src/x86_64/Ltrace.c \
-	src/x86_64/Los-linux.c \
-	src/x86_64/setcontext.S \
+    src/x86_64/getcontext.S \
+    src/x86_64/Gstash_frame.c \
+    src/x86_64/Gtrace.c \
+    src/x86_64/Gos-linux.c \
+    src/x86_64/Lstash_frame.c \
+    src/x86_64/Ltrace.c \
+    src/x86_64/Los-linux.c \
+    src/x86_64/setcontext.S \
 
 # mips and mips64 use the same sources but define _MIP_SIM differently
 # to change the behavior.
 #   mips uses o32 abi (_MIPS_SIM == _ABIO32).
 #   mips64 uses n64 abi (_MIPS_SIM == _ABI64).
-common_c_includes_mips64 := $(LOCAL_PATH)/include/tdep-mips
+libunwind_common_c_includes_mips64 := $(LOCAL_PATH)/include/tdep-mips
 libunwind_src_files_mips64 := $(libunwind_src_files_mips)
 
 # 64-bit architectures
@@ -208,142 +208,142 @@ libunwind_src_files_mips  += src/elf32.c
 libunwind_src_files_x86   += src/elf32.c
 
 libunwind_shared_libraries_target := \
-	libdl \
+    libdl \
 
 libunwind_ldflags_host := \
-	-nostdlib
+    -nostdlib
 
 libunwind_ldlibs_host := \
-	-lc \
-	-lpthread \
+    -lc \
+    -lpthread \
 
 libunwind_export_c_include_dirs := \
-	$(LOCAL_PATH)/include
+    $(LOCAL_PATH)/include
 
 ifeq ($(debug),true)
 libunwind_shared_libraries += \
-	liblog \
+    liblog \
 
 endif
 
-module := libunwind
-module_tag := optional
-build_type := target
-build_target := SHARED_LIBRARY
+libunwind_module := libunwind
+libunwind_module_tag := optional
+libunwind_build_type := target
+libunwind_build_target := SHARED_LIBRARY
 include $(LOCAL_PATH)/Android.build.mk
-build_type := host
+libunwind_build_type := host
 include $(LOCAL_PATH)/Android.build.mk
-build_type := target
-build_target := STATIC_LIBRARY
+libunwind_build_type := target
+libunwind_build_target := STATIC_LIBRARY
 include $(LOCAL_PATH)/Android.build.mk
-build_type := host
+libunwind_build_type := host
 include $(LOCAL_PATH)/Android.build.mk
 
 #-----------------------------------------------------------------------
 # libunwind-ptrace shared library
 #-----------------------------------------------------------------------
 libunwind-ptrace_src_files := \
-	src/ptrace/_UPT_elf.c \
-	src/ptrace/_UPT_accessors.c \
-	src/ptrace/_UPT_access_fpreg.c \
-	src/ptrace/_UPT_access_mem.c \
-	src/ptrace/_UPT_access_reg.c \
-	src/ptrace/_UPT_create.c \
-	src/ptrace/_UPT_destroy.c \
-	src/ptrace/_UPT_find_proc_info.c \
-	src/ptrace/_UPT_get_dyn_info_list_addr.c \
-	src/ptrace/_UPT_put_unwind_info.c \
-	src/ptrace/_UPT_get_proc_name.c \
-	src/ptrace/_UPT_reg_offset.c \
-	src/ptrace/_UPT_resume.c \
+    src/ptrace/_UPT_elf.c \
+    src/ptrace/_UPT_accessors.c \
+    src/ptrace/_UPT_access_fpreg.c \
+    src/ptrace/_UPT_access_mem.c \
+    src/ptrace/_UPT_access_reg.c \
+    src/ptrace/_UPT_create.c \
+    src/ptrace/_UPT_destroy.c \
+    src/ptrace/_UPT_find_proc_info.c \
+    src/ptrace/_UPT_get_dyn_info_list_addr.c \
+    src/ptrace/_UPT_put_unwind_info.c \
+    src/ptrace/_UPT_get_proc_name.c \
+    src/ptrace/_UPT_reg_offset.c \
+    src/ptrace/_UPT_resume.c \
 
 libunwind-ptrace_shared_libraries := \
-	libunwind \
+    libunwind \
 
 libunwind-ptrace_ldflags_host := \
-	-nostdlib
+    -nostdlib
 
 libunwind-ptrace_ldlibs_host := \
-	-lc \
-	-lpthread \
+    -lc \
+    -lpthread \
 
 libunwind-ptrace_export_c_include_dirs := \
-	$(LOCAL_PATH)/include
+    $(LOCAL_PATH)/include
 
-ifeq ($(debug),true)
+ifeq ($(libunwind_debug),true)
 libunwind-ptrace_shared_libraries += \
-	liblog \
+    liblog \
 
 endif
 
-module := libunwind-ptrace
-module_tag := optional
-build_type := target
-build_target := SHARED_LIBRARY
+libunwind_module := libunwind-ptrace
+libunwind_module_tag := optional
+libunwind_build_type := target
+libunwind_build_target := SHARED_LIBRARY
 include $(LOCAL_PATH)/Android.build.mk
-build_type := host
+libunwind_build_type := host
 include $(LOCAL_PATH)/Android.build.mk
 
 #-----------------------------------------------------------------------
 # libunwindbacktrace static library
 #-----------------------------------------------------------------------
 libunwindbacktrace_src_files += \
-	src/unwind/BacktraceWrapper.c \
-	src/unwind/DeleteException.c \
-	src/unwind/FindEnclosingFunction.c \
-	src/unwind/ForcedUnwind.c \
-	src/unwind/GetBSP.c \
-	src/unwind/GetCFA.c \
-	src/unwind/GetDataRelBase.c \
-	src/unwind/GetGR.c \
-	src/unwind/GetIP.c \
-	src/unwind/GetIPInfo.c \
-	src/unwind/GetLanguageSpecificData.c \
-	src/unwind/GetRegionStart.c \
-	src/unwind/GetTextRelBase.c \
-	src/unwind/RaiseException.c \
-	src/unwind/Resume.c \
-	src/unwind/Resume_or_Rethrow.c \
-	src/unwind/SetGR.c \
-	src/unwind/SetIP.c \
+    src/unwind/BacktraceWrapper.c \
+    src/unwind/DeleteException.c \
+    src/unwind/FindEnclosingFunction.c \
+    src/unwind/ForcedUnwind.c \
+    src/unwind/GetBSP.c \
+    src/unwind/GetCFA.c \
+    src/unwind/GetDataRelBase.c \
+    src/unwind/GetGR.c \
+    src/unwind/GetIP.c \
+    src/unwind/GetIPInfo.c \
+    src/unwind/GetLanguageSpecificData.c \
+    src/unwind/GetRegionStart.c \
+    src/unwind/GetTextRelBase.c \
+    src/unwind/RaiseException.c \
+    src/unwind/Resume.c \
+    src/unwind/Resume_or_Rethrow.c \
+    src/unwind/SetGR.c \
+    src/unwind/SetIP.c \
 
 libunwindbacktrace_cflags += \
-	-Wno-old-style-declaration \
-	-fvisibility=hidden \
+    -Wno-old-style-declaration \
+    -fvisibility=hidden \
 
-module := libunwindbacktrace
-module_tag := optional
-build_type := target
-build_target := STATIC_LIBRARY
+libunwind_module := libunwindbacktrace
+libunwind_module_tag := optional
+libunwind_build_type := target
+libunwind_build_target := STATIC_LIBRARY
 libunwindbacktrace_whole_static_libraries := libunwind
 include $(LOCAL_PATH)/Android.build.mk
-build_type := host
+libunwind_build_type := host
 include $(LOCAL_PATH)/Android.build.mk
 
 #-----------------------------------------------------------------------
 # libunwind testing
 #-----------------------------------------------------------------------
 libunwind-unit-tests_cflags := \
-	-fno-builtin \
-	-O0 \
-	-g \
+    -fno-builtin \
+    -O0 \
+    -g \
 
 libunwind-unit-tests_c_includes := \
-	$(LOCAL_PATH)/include \
+    $(LOCAL_PATH)/include \
 
 libunwind-unit-tests_src_files := \
-	android/tests/local_test.cpp \
+    android/tests/local_test.cpp \
 
 libunwind-unit-tests_shared_libraries := \
-	libunwind \
+    libunwind \
 
 libunwind-unit-tests_multilib := both
-module := libunwind-unit-tests
-module_tag := optional
-build_type := target
-build_target := NATIVE_TEST
+libunwind_module := libunwind-unit-tests
+libunwind_module_tag := optional
+libunwind_build_type := target
+libunwind_build_target := NATIVE_TEST
 include $(LOCAL_PATH)/Android.build.mk
-build_type := host
+libunwind_build_type := host
 include $(LOCAL_PATH)/Android.build.mk
 
 # Run the unit tests built for x86 or x86_64.
