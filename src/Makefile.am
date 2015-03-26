@@ -22,7 +22,7 @@ noinst_HEADERS =
 noinst_LTLIBRARIES =
 
 pkgconfigdir = $(libdir)/pkgconfig
-pkgconfig_DATA = libunwind-generic.pc
+pkgconfig_DATA = $(NULL)
 
 if !REMOTE_ONLY
 pkgconfig_DATA += unwind/libunwind.pc
@@ -97,8 +97,9 @@ libunwind_la_LIBADD =
 # List of arch-independent files needed by both local-only and generic
 # libraries:
 libunwind_la_SOURCES_common =					\
+	os-common.c						\
 	$(libunwind_la_SOURCES_os)				\
-	mi/init.c mi/flush_cache.c mi/mempool.c mi/strerror.c
+	mi/init.c mi/flush_cache.c mi/map.c mi/mempool.c mi/strerror.c
 
 # List of arch-independent files needed by generic library (libunwind-$ARCH):
 libunwind_la_SOURCES_generic =						\
@@ -127,6 +128,7 @@ endif
 
 # List of arch-independent files needed by local-only library (libunwind):
 libunwind_la_SOURCES_local_nounwind =					\
+	Los-common.c							\
 	$(libunwind_la_SOURCES_os_local)				\
 	mi/backtrace.c							\
 	mi/dyn-cancel.c mi/dyn-info-list.c mi/dyn-register.c		\
@@ -136,7 +138,8 @@ libunwind_la_SOURCES_local_nounwind =					\
 	mi/Lput_dynamic_unwind_info.c mi/Ldestroy_addr_space.c		\
 	mi/Lget_reg.c   mi/Lset_reg.c					\
 	mi/Lget_fpreg.c mi/Lset_fpreg.c					\
-	mi/Lset_caching_policy.c
+	mi/Lset_caching_policy.c					\
+	mi/Lmap.c
 
 libunwind_la_SOURCES_local =						\
 	$(libunwind_la_SOURCES_local_nounwind)				\
@@ -407,24 +410,6 @@ libunwind_sh_la_SOURCES_sh = $(libunwind_la_SOURCES_sh_common)		\
 	sh/Gglobal.c sh/Ginit.c sh/Ginit_local.c sh/Ginit_remote.c	\
 	sh/Gis_signal_frame.c sh/Gregs.c sh/Gresume.c sh/Gstep.c
 
-if REMOTE_ONLY
-install-exec-hook:
-#	Nothing to do here....
-else
-#
-# This is not ideal, but I know of no other way to install an
-# alias for a library.  For the shared version, we have to do
-# a file check before creating the link, because it isn't going
-# to be there if the user configured with --disable-shared.
-#
-install-exec-hook:
-	cd $(DESTDIR)$(libdir) && $(LN_S) -f libunwind-$(arch).a libunwind-generic.a
-	if test -f $(DESTDIR)$(libdir)/libunwind-$(arch).so; then \
-		cd $(DESTDIR)$(libdir) && $(LN_S) -f libunwind-$(arch).so \
-		libunwind-generic.so; \
-	fi
-endif
-
 if OS_LINUX
  libunwind_la_SOURCES_os	      = $(libunwind_la_SOURCES_os_linux)
  libunwind_la_SOURCES_os_local	      = $(libunwind_la_SOURCES_os_linux_local)
@@ -458,27 +443,11 @@ if OS_QNX
 endif
 
 if ARCH_AARCH64
- lib_LTLIBRARIES += libunwind-aarch64.la
  libunwind_la_SOURCES = $(libunwind_la_SOURCES_aarch64)
- libunwind_aarch64_la_SOURCES = $(libunwind_aarch64_la_SOURCES_aarch64)
- libunwind_aarch64_la_LDFLAGS = $(COMMON_SO_LDFLAGS) -version-info $(SOVERSION)
- libunwind_aarch64_la_LIBADD = libunwind-dwarf-generic.la
- libunwind_aarch64_la_LIBADD += libunwind-elf64.la
-if !REMOTE_ONLY
- libunwind_aarch64_la_LIBADD += libunwind.la -lc
-endif
  libunwind_setjmp_la_SOURCES += aarch64/siglongjmp.S
 else
 if ARCH_ARM
- lib_LTLIBRARIES += libunwind-arm.la
  libunwind_la_SOURCES = $(libunwind_la_SOURCES_arm)
- libunwind_arm_la_SOURCES = $(libunwind_arm_la_SOURCES_arm)
- libunwind_arm_la_LDFLAGS = $(COMMON_SO_LDFLAGS) -version-info $(SOVERSION)
- libunwind_arm_la_LIBADD = libunwind-dwarf-generic.la
- libunwind_arm_la_LIBADD += libunwind-elf32.la
-if !REMOTE_ONLY
- libunwind_arm_la_LIBADD += libunwind.la -lc
-endif
  libunwind_setjmp_la_SOURCES += arm/siglongjmp.S
 else
 if ARCH_IA64
@@ -492,99 +461,36 @@ Gcursor_i.h: mk_Gcursor_i.s
 Lcursor_i.h: mk_Lcursor_i.s
 	"$(srcdir)/ia64/mk_cursor_i" mk_Lcursor_i.s > Lcursor_i.h
 
- lib_LTLIBRARIES += libunwind-ia64.la
  libunwind_la_SOURCES = $(libunwind_la_SOURCES_ia64)
- libunwind_ia64_la_SOURCES = $(libunwind_ia64_la_SOURCES_ia64)
- libunwind_ia64_la_LDFLAGS = $(COMMON_SO_LDFLAGS) -version-info $(SOVERSION)
- libunwind_ia64_la_LIBADD = libunwind-elf64.la
-if !REMOTE_ONLY
- libunwind_ia64_la_LIBADD += libunwind.la -lc
-endif
  libunwind_setjmp_la_SOURCES += ia64/setjmp.S  ia64/sigsetjmp.S  \
 				ia64/longjmp.S ia64/siglongjmp.S
 else
 if ARCH_HPPA
- lib_LTLIBRARIES += libunwind-hppa.la
  libunwind_la_SOURCES = $(libunwind_la_SOURCES_hppa)
- libunwind_hppa_la_SOURCES = $(libunwind_hppa_la_SOURCES_hppa)
- libunwind_hppa_la_LDFLAGS = $(COMMON_SO_LDFLAGS) -version-info $(SOVERSION)
- libunwind_hppa_la_LIBADD = libunwind-dwarf-generic.la
- libunwind_hppa_la_LIBADD += libunwind-elf32.la
-if !REMOTE_ONLY
- libunwind_hppa_la_LIBADD += libunwind.la -lc
-endif
  libunwind_setjmp_la_SOURCES += hppa/siglongjmp.S
 else
 if ARCH_MIPS
- lib_LTLIBRARIES += libunwind-mips.la
  libunwind_la_SOURCES = $(libunwind_la_SOURCES_mips)
- libunwind_mips_la_SOURCES = $(libunwind_mips_la_SOURCES_mips)
- libunwind_mips_la_LDFLAGS = $(COMMON_SO_LDFLAGS) -version-info $(SOVERSION)
- libunwind_mips_la_LIBADD = libunwind-dwarf-generic.la
- libunwind_mips_la_LIBADD += libunwind-elfxx.la
-if !REMOTE_ONLY
- libunwind_mips_la_LIBADD += libunwind.la -lc
-endif
  libunwind_setjmp_la_SOURCES += mips/siglongjmp.S
 else
 if ARCH_X86
- lib_LTLIBRARIES += libunwind-x86.la
  libunwind_la_SOURCES = $(libunwind_la_SOURCES_x86) $(libunwind_x86_la_SOURCES_os)
- libunwind_x86_la_SOURCES = $(libunwind_x86_la_SOURCES_x86)
- libunwind_x86_la_LDFLAGS = $(COMMON_SO_LDFLAGS) -version-info $(SOVERSION)
- libunwind_x86_la_LIBADD = libunwind-dwarf-generic.la
- libunwind_x86_la_LIBADD += libunwind-elf32.la
-if !REMOTE_ONLY
- libunwind_x86_la_LIBADD += libunwind.la -lc
-endif
  libunwind_setjmp_la_SOURCES += x86/longjmp.S x86/siglongjmp.S
 else
 if ARCH_X86_64
- lib_LTLIBRARIES += libunwind-x86_64.la
  libunwind_la_SOURCES = $(libunwind_la_SOURCES_x86_64)
- libunwind_x86_64_la_SOURCES = $(libunwind_x86_64_la_SOURCES_x86_64)
- libunwind_x86_64_la_LDFLAGS = $(COMMON_SO_LDFLAGS) -version-info $(SOVERSION)
- libunwind_x86_64_la_LIBADD = libunwind-dwarf-generic.la
- libunwind_x86_64_la_LIBADD += libunwind-elf64.la
-if !REMOTE_ONLY
- libunwind_x86_64_la_LIBADD += libunwind.la -lc
-endif
  libunwind_setjmp_la_SOURCES += x86_64/longjmp.S x86_64/siglongjmp.S
 else
 if ARCH_PPC32
- lib_LTLIBRARIES += libunwind-ppc32.la
  libunwind_la_SOURCES = $(libunwind_la_SOURCES_ppc32)
- libunwind_ppc32_la_SOURCES = $(libunwind_ppc32_la_SOURCES_ppc32)
- libunwind_ppc32_la_LDFLAGS = $(COMMON_SO_LDFLAGS) -version-info $(SOVERSION)
- libunwind_ppc32_la_LIBADD = libunwind-dwarf-generic.la
- libunwind_ppc32_la_LIBADD += libunwind-elf32.la
-if !REMOTE_ONLY
- libunwind_ppc32_la_LIBADD += libunwind.la -lc
-endif
  libunwind_setjmp_la_SOURCES += ppc/longjmp.S ppc/siglongjmp.S
 else
 if ARCH_PPC64
- lib_LTLIBRARIES += libunwind-ppc64.la
  libunwind_la_SOURCES = $(libunwind_la_SOURCES_ppc64)
- libunwind_ppc64_la_SOURCES = $(libunwind_ppc64_la_SOURCES_ppc64)
- libunwind_ppc64_la_LDFLAGS = $(COMMON_SO_LDFLAGS) -version-info $(SOVERSION)
- libunwind_ppc64_la_LIBADD = libunwind-dwarf-generic.la
- libunwind_ppc64_la_LIBADD += libunwind-elf64.la
-if !REMOTE_ONLY
- libunwind_ppc64_la_LIBADD += libunwind.la -lc
-endif
  libunwind_setjmp_la_SOURCES += ppc/longjmp.S ppc/siglongjmp.S
 else
 if ARCH_SH
- lib_LTLIBRARIES += libunwind-sh.la
  libunwind_la_SOURCES = $(libunwind_la_SOURCES_sh)
- libunwind_sh_la_SOURCES = $(libunwind_sh_la_SOURCES_sh)
- libunwind_sh_la_LDFLAGS = $(COMMON_SO_LDFLAGS) -version-info $(SOVERSION)
- libunwind_sh_la_LIBADD = libunwind-dwarf-generic.la
- libunwind_sh_la_LIBADD += libunwind-elf32.la
-if !REMOTE_ONLY
- libunwind_sh_la_LIBADD += libunwind.la -lc
-endif
  libunwind_setjmp_la_SOURCES += sh/siglongjmp.S
 
 endif # ARCH_SH
