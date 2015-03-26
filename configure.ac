@@ -310,7 +310,7 @@ else
     LDFLAGS_NOSTARTFILES="-XCClinker -nostartfiles"
 fi
 
-if test x$GCC = xyes -a x$intel_compiler != xyes -a x$qcc_compiler != xyes; then
+if test x$GCC = xyes -a x$intel_compiler != xyes -a x$qcc_compiler != xyes -a x$ac_cv_android != xyes; then
   LIBCRTS="-lgcc"
 fi
 
