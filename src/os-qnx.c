@@ -24,32 +24,37 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #include <string.h>
+#include <sys/link.h>
 
 #include "libunwind_i.h"
 
 /* ANDROID support update. */
-static int callback(const struct dl_phdr_info *info, size_t size, void *data)
+static int
+map_add_to_list (const struct dl_phdr_info *info, size_t size, void *data)
 {
-  struct map_info **map_list = (struct map_info **)data;
+  struct map_info **map_list = (struct map_info **) data;
   struct map_info *cur_map;
   int i;
-  struct cb_info *cbi = (struct cb_info*)data;
-  for(i=0; i<info->dlpi_phnum; i++) {
-    int segbase = info->dlpi_addr + info->dlpi_phdr[i].p_vaddr;
-
+  for (i = 0; i < info->dlpi_phnum; i++) {
     cur_map = map_alloc_info ();
     if (cur_map == NULL)
       break;
-
     cur_map->next = *map_list;
     cur_map->start = info->dlpi_addr + info->dlpi_phdr[i].p_vaddr;
     cur_map->end = cur_map->start + info->dlpi_phdr[i].p_memsz;
     cur_map->offset = info->dlpi_phdr[i].p_offset;
-    cur_map->path = strdup(info->dlpi_name);
+    cur_map->flags = 0;
+    Elf_W(Word) flags = info->dlpi_phdr[i].p_flags;
+    if ((flags & PF_R) == PF_R)
+      cur_map->flags |= PROT_READ;
+    if ((flags & PF_W) == PF_W)
+      cur_map->flags |= PROT_WRITE;
+    if ((flags & PF_X) == PF_X)
+      cur_map->flags |= PROT_EXEC;
+    cur_map->path = strdup (info->dlpi_name);
     mutex_init (&cur_map->ei_lock);
     cur_map->ei.size = 0;
     cur_map->ei.image = NULL;
-    cur_map->ei.shared = 0;
 
     *map_list = cur_map;
   }
@@ -83,12 +88,12 @@ map_create_list (pid_t pid)
 
   if (pid != getpid())
     {
-      /* Return an error if an attempt is made to perform remote image lookup */
-      return -1;
+      /* Return an empty list if an attempt is made to perform remote image lookup */
+      return NULL;
     }
 
-  if (dl_iterate_phdr (callback, &map_list) != 0)
-    return map_list;
-  return NULL;
+  dl_iterate_phdr (map_add_to_list, &map_list);
+
+  return map_list;
 }
 /* End of ANDROID update. */

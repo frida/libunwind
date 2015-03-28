@@ -59,9 +59,7 @@ struct unw_addr_space
     struct dwarf_rs_cache global_cache;
     struct unw_debug_frame_list *debug_frames;
     /* ANDROID support update. */
-#if defined(__linux__)
     struct map_info *map_list;
-#endif
     /* End of ANDROID update. */
    };
 
