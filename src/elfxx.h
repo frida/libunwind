@@ -24,6 +24,9 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
+#ifndef elfxx_h
+#define elfxx_h
+
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -119,3 +122,6 @@ elf_map_cached_image (struct map_info *map, unw_word_t ip)
   return return_value;
 }
 /* End of ANDROID update */
+
+#endif
+

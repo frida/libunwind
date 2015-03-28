@@ -41,7 +41,9 @@ struct elf_image;
 #endif
 
 #ifndef UNW_REMOTE_ONLY
-  #if defined(HAVE_LINK_H)
+  #if defined(__ANDROID__)
+    #include "dl-iterate-phdr.h"
+  #elif defined(HAVE_LINK_H)
     #include <link.h>
   #elif defined(HAVE_SYS_LINK_H)
     #include <sys/link.h>
