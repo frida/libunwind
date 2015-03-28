@@ -438,8 +438,11 @@ if OS_FREEBSD
 endif
 
 if OS_QNX
- libunwind_la_SOURCES_os	= $(libunwind_la_SOURCES_os_qnx)
- libunwind_la_SOURCES_os_local	= $(libunwind_la_SOURCES_os_qnx_local)
+ libunwind_la_SOURCES_os		= $(libunwind_la_SOURCES_os_qnx)
+ libunwind_la_SOURCES_os_local		= $(libunwind_la_SOURCES_os_qnx_local)
+ libunwind_la_SOURCES_x86_os		= x86/Gos-qnx.c
+ libunwind_x86_la_SOURCES_os		= x86/getcontext-qnx.S
+ libunwind_la_SOURCES_x86_os_local	= x86/Los-qnx.c
 endif
 
 if ARCH_AARCH64
