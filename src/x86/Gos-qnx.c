@@ -29,21 +29,24 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 PROTECTED int
 unw_is_signal_frame (unw_cursor_t *cursor)
 {
-  fprintf (stderr, "TODO: unw_is_signal_frame not yet implemented\n");
+  /* Not supported yet */
+  printf ("%s: implement me\n", __FUNCTION__);
   return 0;
 }
 
 PROTECTED int
 unw_handle_signal_frame (unw_cursor_t *cursor)
 {
-  fprintf (stderr, "TODO: unw_handle_signal_frame not yet implemented\n");
+  /* Not supported yet */
+  printf ("%s: implement me\n", __FUNCTION__);
   return 0;
 }
 
 HIDDEN dwarf_loc_t
 x86_get_scratch_loc (struct cursor *c, unw_regnum_t reg)
 {
-  fprintf (stderr, "TODO: x86_get_scratch_loc not yet implemented\n");
+  /* Not supported yet */
+  printf ("%s: implement me\n", __FUNCTION__);
   return DWARF_NULL_LOC;
 }
 
@@ -51,14 +54,16 @@ x86_get_scratch_loc (struct cursor *c, unw_regnum_t reg)
 HIDDEN void *
 x86_r_uc_addr (ucontext_t *uc, int reg)
 {
-  fprintf (stderr, "TODO: x86_r_uc_addr not yet implemented\n");
+  /* Not supported yet */
+  printf ("%s: implement me\n", __FUNCTION__);
   return NULL;
 }
 
 HIDDEN int
 x86_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
 {
-  fprintf (stderr, "TODO: x86_local_resume not yet implemented\n");
+  /* Not supported yet */
+  printf ("%s: implement me\n", __FUNCTION__);
   return -UNW_EINVAL;
 }
 #endif
