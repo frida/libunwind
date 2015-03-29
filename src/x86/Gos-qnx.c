@@ -30,7 +30,6 @@ PROTECTED int
 unw_is_signal_frame (unw_cursor_t *cursor)
 {
   /* Not supported yet */
-  printf ("%s: implement me\n", __FUNCTION__);
   return 0;
 }
 
@@ -54,9 +53,29 @@ x86_get_scratch_loc (struct cursor *c, unw_regnum_t reg)
 HIDDEN void *
 x86_r_uc_addr (ucontext_t *uc, int reg)
 {
-  /* Not supported yet */
-  printf ("%s: implement me\n", __FUNCTION__);
-  return NULL;
+  X86_CPU_REGISTERS *cr = &uc->uc_mcontext.cpu;
+  void *addr;
+
+  switch (reg)
+    {
+    case UNW_X86_EAX: addr = &cr->eax; break;
+    case UNW_X86_EBX: addr = &cr->ebx; break;
+    case UNW_X86_ECX: addr = &cr->ecx; break;
+    case UNW_X86_EDX: addr = &cr->edx; break;
+    case UNW_X86_ESI: addr = &cr->esi; break;
+    case UNW_X86_EDI: addr = &cr->edi; break;
+    case UNW_X86_EBP: addr = &cr->ebp; break;
+    case UNW_X86_EIP: addr = &cr->eip; break;
+    case UNW_X86_ESP: addr = &cr->esp; break;
+    case UNW_X86_CS:  addr = &cr->cs; break;
+    case UNW_X86_EFLAGS: addr = &cr->efl; break;
+    case UNW_X86_SS:  addr = &cr->ss; break;
+
+    default:
+      addr = NULL;
+    }
+
+  return addr;
 }
 
 HIDDEN int
