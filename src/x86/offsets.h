@@ -144,3 +144,21 @@
 #define	FREEBSD_UC_MCONTEXT_FPOWNED_FPU	0x20001
 #define	FREEBSD_UC_MCONTEXT_FPOWNED_PCB	0x20002
 
+/* QNX-specific definitions: */
+
+#define QNX_UC_MCONTEXT_CPU_OFF	0x18
+#define QNX_UC_MCONTEXT_FPU_OFF	0x4c
+
+#define QNX_CR_EDI_OFF		0x00
+#define QNX_CR_ESI_OFF		0x04
+#define QNX_CR_EBP_OFF		0x08
+#define QNX_CR_EXX_OFF		0x0c
+#define QNX_CR_EBX_OFF		0x10
+#define QNX_CR_EDX_OFF		0x14
+#define QNX_CR_ECX_OFF		0x18
+#define QNX_CR_EAX_OFF		0x1c
+#define QNX_CR_EIP_OFF		0x20
+#define QNX_CR_CS_OFF		0x24
+#define QNX_CR_EFL_OFF		0x28
+#define QNX_CR_ESP_OFF		0x2c
+#define QNX_CR_SS_OFF		0x30

@@ -1,6 +1,7 @@
 /* libunwind - a platform-independent unwind library
    Copyright (C) 2009 Google, Inc
 	Contributed by Paul Pluzhnikov <ppluzhnikov@google.com>
+   Copyright (C) 2015 Ole André Vadla Ravnås <oleavr@gmail.com>
 
 This file is part of libunwind.
 
@@ -40,28 +41,22 @@ _Ux86_getcontext:
 	mov	4(%esp),%eax  /* ucontext_t* */
 
 	/* EAX is not preserved. */
-	movl	$0, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_EAX_OFF)(%eax)
+	movl	$0, (QNX_UC_MCONTEXT_CPU_OFF+QNX_CR_EAX_OFF)(%eax)
 
-	movl	%ebx, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_EBX_OFF)(%eax)
-	movl	%ecx, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_ECX_OFF)(%eax)
-	movl	%edx, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_EDX_OFF)(%eax)
-	movl	%edi, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_EDI_OFF)(%eax)
-	movl	%esi, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_ESI_OFF)(%eax)
-	movl	%ebp, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_EBP_OFF)(%eax)
+	movl	%ebx, (QNX_UC_MCONTEXT_CPU_OFF+QNX_CR_EBX_OFF)(%eax)
+	movl	%ecx, (QNX_UC_MCONTEXT_CPU_OFF+QNX_CR_ECX_OFF)(%eax)
+	movl	%edx, (QNX_UC_MCONTEXT_CPU_OFF+QNX_CR_EDX_OFF)(%eax)
+	movl	%edi, (QNX_UC_MCONTEXT_CPU_OFF+QNX_CR_EDI_OFF)(%eax)
+	movl	%esi, (QNX_UC_MCONTEXT_CPU_OFF+QNX_CR_ESI_OFF)(%eax)
+	movl	%ebp, (QNX_UC_MCONTEXT_CPU_OFF+QNX_CR_EBP_OFF)(%eax)
 
 	movl	(%esp), %ecx
-	movl	%ecx, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_EIP_OFF)(%eax)
+	movl	%ecx, (QNX_UC_MCONTEXT_CPU_OFF+QNX_CR_EIP_OFF)(%eax)
 
 	leal	4(%esp), %ecx		/* Exclude the return address.  */
-	movl	%ecx, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_ESP_OFF)(%eax)
+	movl	%ecx, (QNX_UC_MCONTEXT_CPU_OFF+QNX_CR_ESP_OFF)(%eax)
 
-	/* glibc getcontext saves FS, but not GS */
-	xorl	%ecx, %ecx
-	movw	%fs, %cx
-	movl	%ecx, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_FS_OFF)(%eax)
-
-	leal	LINUX_UC_FPREGS_MEM_OFF(%eax), %ecx
-	movl	%ecx, (LINUX_UC_MCONTEXT_OFF+LINUX_SC_FPSTATE_OFF)(%eax)
+	leal	QNX_UC_MCONTEXT_FPU_OFF(%eax), %ecx
 	fnstenv	(%ecx)
 	fldenv	(%ecx)
 
