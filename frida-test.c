@@ -45,9 +45,36 @@ badger (void)
   mushroom ();
 }
 
+#define xstr(s) str (s)
+#define str(s) #s
+
+#define PRINT_REG_OFFSET(R, r) \
+  printf ("#define QNX_CR_" xstr(R) "_OFF\t\t0x%02x\n", __builtin_offsetof (X86_CPU_REGISTERS, r))
+
+static void
+dump_offsets (void)
+{
+  printf ("#define QNX_UC_MCONTEXT_CPU_OFF\t0x%02x\n", __builtin_offsetof (ucontext_t, uc_mcontext) + __builtin_offsetof (mcontext_t, cpu));
+  printf ("#define QNX_UC_MCONTEXT_FPU_OFF\t0x%02x\n", __builtin_offsetof (ucontext_t, uc_mcontext) + __builtin_offsetof (mcontext_t, fpu));
+  PRINT_REG_OFFSET (EDI, edi);
+  PRINT_REG_OFFSET (ESI, esi);
+  PRINT_REG_OFFSET (EBP, ebp);
+  PRINT_REG_OFFSET (EXX, exx);
+  PRINT_REG_OFFSET (EBX, ebx);
+  PRINT_REG_OFFSET (EDX, edx);
+  PRINT_REG_OFFSET (ECX, ecx);
+  PRINT_REG_OFFSET (EAX, eax);
+  PRINT_REG_OFFSET (EIP, eip);
+  PRINT_REG_OFFSET (CS, cs);
+  PRINT_REG_OFFSET (EFL, efl);
+  PRINT_REG_OFFSET (ESP, esp);
+  PRINT_REG_OFFSET (SS, ss);
+}
+
 int
 main (int argc, char * argv[])
 {
+  dump_offsets ();
   badger ();
   return 0;
 }
