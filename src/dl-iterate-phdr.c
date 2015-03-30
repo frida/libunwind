@@ -23,6 +23,8 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
+#if defined(__ANDROID__)
+
 #include "libunwind_i.h"
 #include "os-linux.h"
 #include "dl-iterate-phdr.h"
@@ -60,4 +62,6 @@ dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *
 
   return rc;
 }
+
+#endif
 
