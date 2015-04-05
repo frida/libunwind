@@ -511,6 +511,10 @@ dwarf_find_debug_frame (int found, unw_dyn_info_t *di_debug, unw_word_t ip,
 
 #ifndef UNW_REMOTE_ONLY
 
+#if defined(__ANDROID__) || defined(__QNX__)
+# include "dl-iterate-phdr.h"
+#endif
+
 /* ptr is a pointer to a dwarf_callback_data structure and, on entry,
    member ip contains the instruction-pointer we're looking
    for.  */

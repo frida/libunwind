@@ -27,10 +27,11 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <sys/link.h>
 
 #include "libunwind_i.h"
+#include "dl-iterate-phdr.h"
 
 /* ANDROID support update. */
 static int
-map_add_to_list (const struct dl_phdr_info *info, size_t size, void *data)
+map_add_to_list (struct dl_phdr_info *info, size_t size, void *data)
 {
   struct map_info **map_list = (struct map_info **) data;
   struct map_info *cur_map;

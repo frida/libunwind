@@ -146,13 +146,13 @@ libunwind_la_SOURCES_local =						\
 	$(libunwind_la_SOURCES_local_unwind)
 
 noinst_HEADERS += os-linux.h
-libunwind_la_SOURCES_os_linux = os-linux.c dl-iterate-phdr.c
+libunwind_la_SOURCES_os_linux = os-linux.c dl-iterate-phdr-android.c
 
 libunwind_la_SOURCES_os_hpux = os-hpux.c
 
 libunwind_la_SOURCES_os_freebsd = os-freebsd.c
 
-libunwind_la_SOURCES_os_qnx = os-qnx.c
+libunwind_la_SOURCES_os_qnx = os-qnx.c dl-iterate-phdr-qnx.c
 
 libunwind_dwarf_common_la_SOURCES = dwarf/global.c
 
