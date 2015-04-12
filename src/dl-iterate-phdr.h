@@ -3,7 +3,7 @@
 
 #include "elfxx.h"
 
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) && !(defined (__QNX__) && defined (i386))
 
 struct dl_phdr_info {
   Elf_W(Addr)        dlpi_addr;  /* Base address of object */
@@ -16,8 +16,12 @@ struct dl_phdr_info {
 
 #endif
 
+#if !(defined (__QNX__) && defined (i386))
+
 int
 dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *data),
                  void *data);
+
+#endif
 
 #endif

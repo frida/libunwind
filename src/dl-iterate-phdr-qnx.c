@@ -26,6 +26,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "libunwind_i.h"
 #include "dl-iterate-phdr.h"
 
+#if !defined (i386)
+
 HIDDEN int
 dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *data),
                  void *data)
@@ -34,3 +36,4 @@ dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *
   return 0;
 }
 
+#endif
