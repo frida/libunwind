@@ -300,8 +300,10 @@ x86_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
 
       Debug (8, "resuming at ip=%x via sigreturn(%p)\n", c->dwarf.ip, sc);
 
+#if 0
 #if !defined(__ANDROID__)
       sigreturn (sc);
+#endif
 #endif
     }
   else
