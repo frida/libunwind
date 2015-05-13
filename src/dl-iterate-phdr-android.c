@@ -29,6 +29,14 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "os-linux.h"
 #include "dl-iterate-phdr.h"
 
+#ifndef IS_ELF
+/* Copied from NDK header. */
+#define IS_ELF(ehdr) ((ehdr).e_ident[EI_MAG0] == ELFMAG0 && \
+                      (ehdr).e_ident[EI_MAG1] == ELFMAG1 && \
+                      (ehdr).e_ident[EI_MAG2] == ELFMAG2 && \
+                      (ehdr).e_ident[EI_MAG3] == ELFMAG3)
+#endif
+
 HIDDEN int
 dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *data),
                  void *data)
