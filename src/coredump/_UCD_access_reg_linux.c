@@ -39,14 +39,23 @@ _UCD_access_reg (unw_addr_space_t as,
       return -UNW_EINVAL;
     }
 
+  if (regnum < 0)
+    goto badreg;
+
 #if defined(UNW_TARGET_AARCH64)
-  if (regnum < 0 || regnum >= UNW_AARCH64_FPCR)
+  if (regnum >= UNW_AARCH64_FPCR)
     goto badreg;
 #elif defined(UNW_TARGET_ARM)
-  if (regnum < 0 || regnum >= 16)
+  if (regnum >= 16)
     goto badreg;
 #elif defined(UNW_TARGET_SH)
-  if (regnum < 0 || regnum > UNW_SH_PR)
+  if (regnum > UNW_SH_PR)
+    goto badreg;
+#elif defined(UNW_TARGET_TILEGX)
+  if (regnum > UNW_TILEGX_CFA)
+    goto badreg;
+#elif defined(UNW_TARGET_S390X)
+  if (regnum > UNW_S390X_R15)
     goto badreg;
 #else
 #if defined(UNW_TARGET_MIPS)
@@ -117,7 +126,7 @@ _UCD_access_reg (unw_addr_space_t as,
 #error Port me
 #endif
 
-  if (regnum < 0 || regnum >= (unw_regnum_t)ARRAY_SIZE(remap_regs))
+  if (regnum >= (unw_regnum_t)ARRAY_SIZE(remap_regs))
     goto badreg;
 
   regnum = remap_regs[regnum];
@@ -127,8 +136,8 @@ _UCD_access_reg (unw_addr_space_t as,
    * image.
    */
   Debug(1, "pr_reg[%d]:%ld (0x%lx)\n", regnum,
-		(long)ui->prstatus->pr_reg[regnum],
-		(long)ui->prstatus->pr_reg[regnum]
+                (long)ui->prstatus->pr_reg[regnum],
+                (long)ui->prstatus->pr_reg[regnum]
   );
   *valp = ui->prstatus->pr_reg[regnum];
 

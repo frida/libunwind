@@ -1,7 +1,7 @@
 /* libunwind - a platform-independent unwind library
    Copyright (C) 2003, 2005 Hewlett-Packard Co
    Copyright (C) 2007 David Mosberger-Tang
-	Contributed by David Mosberger-Tang <dmosberger@gmail.com>
+        Contributed by David Mosberger-Tang <dmosberger@gmail.com>
 
 This file is part of libunwind.
 
@@ -24,9 +24,6 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
-#ifndef elfxx_h
-#define elfxx_h
-
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -34,29 +31,31 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <sys/stat.h>
 
 #include "libunwind_i.h"
-#include "map_info.h"
 
-#if ELF_CLASS == ELFCLASS32
-# define ELF_W(x)	ELF32_##x
-# define Elf_W(x)	Elf32_##x
-# define elf_w(x)	_Uelf32_##x
+#if UNW_ELF_CLASS == UNW_ELFCLASS32
+# define ELF_W(x)       ELF32_##x
+# define Elf_W(x)       Elf32_##x
+# define elf_w(x)       _Uelf32_##x
 #else
-# define ELF_W(x)	ELF64_##x
-# define Elf_W(x)	Elf64_##x
-# define elf_w(x)	_Uelf64_##x
+# define ELF_W(x)       ELF64_##x
+# define Elf_W(x)       Elf64_##x
+# define elf_w(x)       _Uelf64_##x
 #endif
 
 extern int elf_w (get_proc_name) (unw_addr_space_t as,
-				  pid_t pid, unw_word_t ip,
-				  char *buf, size_t len,
-				  unw_word_t *offp);
+                                  pid_t pid, unw_word_t ip,
+                                  char *buf, size_t len,
+                                  unw_word_t *offp);
 
 extern int elf_w (get_proc_name_in_image) (unw_addr_space_t as,
-					   struct elf_image *ei,
-					   unsigned long segbase,
-					   unsigned long mapoff,
-					   unw_word_t ip,
-					   char *buf, size_t buf_len, unw_word_t *offp);
+                                           struct elf_image *ei,
+                                           unsigned long segbase,
+                                           unsigned long mapoff,
+                                           unw_word_t ip,
+                                           char *buf, size_t buf_len, unw_word_t *offp);
+
+extern Elf_W (Shdr)* elf_w (find_section) (struct elf_image *ei, const char* secname);
+extern int elf_w (load_debuglink) (const char* file, struct elf_image *ei, int is_local);
 
 static inline int
 elf_w (valid_object) (struct elf_image *ei)
@@ -65,9 +64,9 @@ elf_w (valid_object) (struct elf_image *ei)
     return 0;
 
   return (memcmp (ei->image, ELFMAG, SELFMAG) == 0
-	  && ((uint8_t *) ei->image)[EI_CLASS] == ELF_CLASS
-	  && ((uint8_t *) ei->image)[EI_VERSION] != EV_NONE
-	  && ((uint8_t *) ei->image)[EI_VERSION] <= EV_CURRENT);
+          && ((uint8_t *) ei->image)[EI_CLASS] == UNW_ELF_CLASS
+          && ((uint8_t *) ei->image)[EI_VERSION] != EV_NONE
+          && ((uint8_t *) ei->image)[EI_VERSION] <= EV_CURRENT);
 }
 
 static inline int
@@ -100,28 +99,3 @@ elf_map_image (struct elf_image *ei, const char *path)
 
   return 0;
 }
-
-/* ANDROID support update */
-static inline int
-elf_map_cached_image (struct map_info *map, unw_word_t ip)
-{
-  intrmask_t saved_mask;
-  int return_value = 0;
-
-  /* Lock while loading the cached elf image. */
-  lock_acquire (&map->ei_lock, saved_mask);
-  if (map->ei.image == NULL)
-    {
-      if (elf_map_image(&map->ei, map->path) < 0)
-        {
-          map->ei.image = NULL;
-          return_value = -1;
-        }
-    }
-  lock_release (&map->ei_lock, saved_mask);
-  return return_value;
-}
-/* End of ANDROID update */
-
-#endif
-

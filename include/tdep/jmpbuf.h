@@ -5,7 +5,7 @@
 
 #if defined __aarch64__
 # include "tdep-aarch64/jmpbuf.h"
-#if defined __arm__
+#elif defined __arm__
 # include "tdep-arm/jmpbuf.h"
 #elif defined __hppa__
 # include "tdep-hppa/jmpbuf.h"
@@ -21,6 +21,8 @@
 # include "tdep-x86/jmpbuf.h"
 #elif defined __x86_64__
 # include "tdep-x86_64/jmpbuf.h"
+#elif defined __tilegx__
+# include "tdep-tilegx/jmpbuf.h"
 #else
 # error "Unsupported arch"
 #endif

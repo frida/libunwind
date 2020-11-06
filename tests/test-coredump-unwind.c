@@ -57,8 +57,12 @@
 #include <grp.h>
 
 /* For SIGSEGV handler code */
-#include <execinfo.h>
-#include <sys/ucontext.h>
+#if HAVE_EXECINFO_H
+# include <execinfo.h>
+#else
+  extern int backtrace (void **, int);
+#endif
+#include <ucontext.h>
 
 #include <libunwind-coredump.h>
 
@@ -137,7 +141,7 @@ static void verror_msg_helper(const char *s,
   if (flags & LOGMODE_STDIO)
     {
       fflush(stdout);
-      used += write(STDERR_FILENO, msg, used + msgeol_len);
+      write(STDERR_FILENO, msg, used + msgeol_len);
     }
   msg[used] = '\0'; /* remove msg_eol (usually "\n") */
   if (flags & LOGMODE_SYSLOG)
@@ -242,7 +246,7 @@ void handle_sigsegv(int sig, siginfo_t *info, void *ucontext)
     void *array[50];
     int size;
     size = backtrace(array, 50);
-#ifdef __linux__
+#if defined __linux__ && HAVE_EXECINFO_H
     backtrace_symbols_fd(array, size, 2);
 #endif
   }
@@ -314,11 +318,11 @@ main(int argc UNUSED, char **argv)
   while (*argv)
     {
       char *colon;
-      long vaddr = strtol(*argv, &colon, 16);
+      unsigned long vaddr = strtoul(*argv, &colon, 16);
       if (*colon != ':')
         error_msg_and_die("Bad format: '%s'", *argv);
       if (_UCD_add_backing_file_at_vaddr(ui, vaddr, colon + 1) < 0)
-        error_msg_and_die("Can't add backing file '%s'", colon + 1);
+        error_msg("Can't add backing file '%s'", colon + 1);
       argv++;
     }
 
@@ -334,11 +338,16 @@ main(int argc UNUSED, char **argv)
       if (ret < 0)
         error_msg_and_die("unw_get_proc_info(ip=0x%lx) failed: ret=%d\n", (long) ip, ret);
 
-      if (!testcase)
-        printf("\tip=0x%08lx proc=%08lx-%08lx handler=0x%08lx lsda=0x%08lx\n",
+      if (!testcase) {
+        char proc_name[128];
+        unw_word_t off;
+        unw_get_proc_name(&c, proc_name, sizeof(proc_name), &off);
+
+        printf("\tip=0x%08lx proc=%08lx-%08lx handler=0x%08lx lsda=0x%08lx %s\n",
 				(long) ip,
 				(long) pi.start_ip, (long) pi.end_ip,
-				(long) pi.handler, (long) pi.lsda);
+				(long) pi.handler, (long) pi.lsda, proc_name);
+	  }
 
       if (testcase && test_cur < TEST_FRAMES)
         {

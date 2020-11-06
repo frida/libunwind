@@ -36,6 +36,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ucontext.h>
 #include <unistd.h>
 #include <libunwind.h>
 
@@ -123,7 +124,7 @@ do_backtrace (void)
       if (labs((unw_word_t) addresses[1][i] - (unw_word_t) addresses[2][i]) > 1)
 	{
           printf ("FAILURE: backtrace() and unw_backtrace() addresses differ at %d: %p vs. %p\n",
-		  i, addresses[1][n], addresses[2][n]);
+                  i, addresses[1][i], addresses[2][i]);
           ++num_errors;
 	}
 
@@ -133,7 +134,7 @@ do_backtrace (void)
       if (labs((unw_word_t) addresses[0][i] - (unw_word_t) addresses[1][i]) > 1)
 	{
           printf ("FAILURE: unw_step() loop and backtrace() addresses differ at %d: %p vs. %p\n",
-		  i, addresses[0][n], addresses[1][n]);
+                  i, addresses[0][i], addresses[1][i]);
           ++num_errors;
 	}
 }
@@ -206,13 +207,17 @@ sighandler (int signal, void *siginfo UNUSED, void *context)
       printf (" @ %lx", (unsigned long) uc->uc_mcontext.mc_eip);
 #endif
 #elif UNW_TARGET_X86_64
-#if defined __linux__
+#if defined __linux__ || defined __sun
       printf (" @ %lx", (unsigned long) uc->uc_mcontext.gregs[REG_RIP]);
 #elif defined __FreeBSD__
       printf (" @ %lx", (unsigned long) uc->uc_mcontext.mc_rip);
 #endif
 #elif defined UNW_TARGET_ARM
+#if defined __linux__
       printf (" @ %lx", (unsigned long) uc->uc_mcontext.arm_pc);
+#elif defined __FreeBSD__
+      printf (" @ %lx", (unsigned long) uc->uc_mcontext.__gregs[_REG_PC]);
+#endif
 #endif
       printf ("\n");
     }

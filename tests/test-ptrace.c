@@ -182,6 +182,11 @@ main (int argc, char **argv)
 
       /* automated test case */
       argv = args;
+
+      /* Unless the args array is 'walked' the child
+         process is unable to access it and dies with a segfault */
+      fprintf(stderr, "Automated test (%s,%s,%s,%s)\n",
+              args[0],args[1],args[2],args[3]);
     }
   else if (argc > 1)
     while (argv[optind][0] == '-')
@@ -303,9 +308,17 @@ main (int argc, char **argv)
 	    {
 	      do_backtrace ();
 #if HAVE_DECL_PTRACE_SINGLESTEP
-	      ptrace (PTRACE_SINGLESTEP, target_pid, 0, pending_sig);
+	      if (ptrace (PTRACE_SINGLESTEP, target_pid, 0, pending_sig) < 0)
+          {
+            panic ("ptrace(PTRACE_SINGLESTEP) failed (errno=%d)\n", errno);
+            killed = 1;
+          }
 #elif HAVE_DECL_PT_STEP
-	      ptrace (PT_STEP, target_pid, (caddr_t)1, pending_sig);
+	      if (ptrace (PT_STEP, target_pid, (caddr_t)1, pending_sig) < 0)
+          {
+            panic ("ptrace(PT_STEP) failed (errno=%d)\n", errno);
+            killed = 1;
+          }
 #else
 #error Singlestep me
 #endif

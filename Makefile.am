@@ -1,6 +1,12 @@
-include_HEADERS = include/libunwind-dynamic.h \
-    include/libunwind-ptrace.h \
-    include/libunwind-coredump.h
+include_HEADERS = include/libunwind-dynamic.h
+
+if BUILD_PTRACE
+include_HEADERS += include/libunwind-ptrace.h
+endif BUILD_PTRACE
+
+if BUILD_COREDUMP
+include_HEADERS += include/libunwind-coredump.h
+endif BUILD_COREDUMP
 
 if ARCH_AARCH64
 include_HEADERS += include/libunwind-aarch64.h
@@ -17,6 +23,9 @@ endif
 if ARCH_MIPS
 include_HEADERS += include/libunwind-mips.h
 endif
+if ARCH_TILEGX
+include_HEADERS += include/libunwind-tilegx.h
+endif
 if ARCH_X86
 include_HEADERS += include/libunwind-x86.h
 endif
@@ -32,14 +41,28 @@ endif
 if ARCH_SH
 include_HEADERS += include/libunwind-sh.h
 endif
+if ARCH_S390X
+include_HEADERS += include/libunwind-s390x.h
+endif
 
 if !REMOTE_ONLY
 include_HEADERS += include/libunwind.h
+if BUILD_UNWIND_HEADER
+include_HEADERS += include/unwind.h
+endif
 endif
 
 nodist_include_HEADERS = include/libunwind-common.h
 
 SUBDIRS = src
+
+if CONFIG_TESTS
+SUBDIRS += tests
+endif
+
+if CONFIG_DOCS
+SUBDIRS += doc
+endif
 
 noinst_HEADERS = include/dwarf.h include/dwarf_i.h include/dwarf-eh.h	\
 	include/compiler.h include/libunwind_i.h include/mempool.h	\
@@ -55,6 +78,8 @@ noinst_HEADERS = include/dwarf.h include/dwarf_i.h include/dwarf-eh.h	\
 	include/tdep-hppa/jmpbuf.h include/tdep-hppa/dwarf-config.h	\
 	include/tdep-mips/libunwind_i.h					\
 	include/tdep-mips/jmpbuf.h include/tdep-mips/dwarf-config.h	\
+	include/tdep-tilegx/libunwind_i.h				\
+	include/tdep-tilegx/jmpbuf.h include/tdep-tilegx/dwarf-config.h	\
 	include/tdep-x86/libunwind_i.h					\
 	include/tdep-x86/jmpbuf.h include/tdep-x86/dwarf-config.h	\
 	include/tdep-x86_64/libunwind_i.h				\
@@ -65,6 +90,8 @@ noinst_HEADERS = include/dwarf.h include/dwarf_i.h include/dwarf-eh.h	\
 	include/tdep-ppc64/jmpbuf.h include/tdep-ppc64/libunwind_i.h	\
 	include/tdep-sh/dwarf-config.h					\
 	include/tdep-sh/jmpbuf.h include/tdep-sh/libunwind_i.h		\
+	include/tdep-s390x/dwarf-config.h				\
+	include/tdep-s390x/jmpbuf.h include/tdep-s390x/libunwind_i.h	\
 	include/tdep/libunwind_i.h					\
 	include/tdep/jmpbuf.h include/tdep/dwarf-config.h
 
@@ -84,3 +111,4 @@ MAINTAINERCLEANFILES = \
 	config/missing \
 	include/config.h.in \
 	include/config.h.in~
+
