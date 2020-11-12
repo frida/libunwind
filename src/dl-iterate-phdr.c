@@ -1,6 +1,6 @@
 /* libunwind - a platform-independent unwind library
    Copyright (C) 2003-2005 Hewlett-Packard Co
-        Contributed by David Mosberger-Tang <davidm@hpl.hp.com>
+	Contributed by David Mosberger-Tang <davidm@hpl.hp.com>
 
 This file is part of libunwind.
 
@@ -23,51 +23,52 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
-#include <limits.h>
-#include <stdio.h>
+#if defined(__ANDROID__) && __ANDROID_API__ < 21
+
+#include <link.h>
 
 #include "libunwind_i.h"
-#include "os-linux.h" // using linux header for map_iterator implementation
+#include "os-linux.h"
 
-int
-tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
-                    unsigned long *segbase, unsigned long *mapoff,
-                    char *path, size_t pathlen)
+#ifndef IS_ELF
+/* Copied from NDK header. */
+#define IS_ELF(ehdr) ((ehdr).e_ident[EI_MAG0] == ELFMAG0 && \
+                      (ehdr).e_ident[EI_MAG1] == ELFMAG1 && \
+                      (ehdr).e_ident[EI_MAG2] == ELFMAG2 && \
+                      (ehdr).e_ident[EI_MAG3] == ELFMAG3)
+#endif
+
+HIDDEN int
+dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *data),
+                 void *data)
 {
+  int rc = 0;
   struct map_iterator mi;
-  int found = 0, rc;
-  unsigned long hi;
+  unsigned long start, end, offset, flags;
 
-  if (maps_init (&mi, pid) < 0)
+  if (maps_init (&mi, getpid()) < 0)
     return -1;
 
-  while (maps_next (&mi, segbase, &hi, mapoff, NULL))
-    if (ip >= *segbase && ip < hi)
-      {
-        found = 1;
-        break;
-      }
+  while (maps_next (&mi, &start, &end, &offset, &flags))
+    {
+      Elf_W(Ehdr) *ehdr = (Elf_W(Ehdr) *) start;
 
-  if (!found)
-    {
-      maps_close (&mi);
-      return -1;
+      if (mi.path[0] != '\0' && (flags & PROT_EXEC) != 0 && IS_ELF (*ehdr))
+        {
+          Elf_W(Phdr) *phdr = (Elf_W(Phdr) *) (start + ehdr->e_phoff);
+          struct dl_phdr_info info;
+
+          info.dlpi_addr = start;
+          info.dlpi_name = mi.path;
+          info.dlpi_phdr = phdr;
+          info.dlpi_phnum = ehdr->e_phnum;
+          rc = callback (&info, sizeof (info), data);
+        }
     }
-  if (path)
-    {
-      strncpy(path, mi.path, pathlen);
-    }
-  rc = elf_map_image (ei, mi.path);
+
   maps_close (&mi);
+
   return rc;
 }
 
-#ifndef UNW_REMOTE_ONLY
-
-void
-tdep_get_exe_image_path (char *path)
-{
-  strcpy(path, getexecname());
-}
-
-#endif /* !UNW_REMOTE_ONLY */
+#endif
