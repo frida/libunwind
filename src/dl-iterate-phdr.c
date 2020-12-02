@@ -25,6 +25,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #if defined(__ANDROID__) && __ANDROID_API__ < 21
 
+#include <dlfcn.h>
 #include <link.h>
 
 #include "libunwind_i.h"
@@ -38,13 +39,29 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
                       (ehdr).e_ident[EI_MAG3] == ELFMAG3)
 #endif
 
+typedef int (*unw_iterate_phdr_impl) (int (*callback) (
+                                        struct dl_phdr_info *info,
+                                        size_t size, void *data),
+                                      void *data);
+
 HIDDEN int
 dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *data),
                  void *data)
 {
+  static int initialized = 0;
+  static unw_iterate_phdr_impl libc_impl;
   int rc = 0;
   struct map_iterator mi;
   unsigned long start, end, offset, flags;
+
+  if (!initialized)
+    {
+      libc_impl = dlsym (RTLD_NEXT, "dl_iterate_phdr");
+      initialized = 1;
+    }
+
+  if (libc_impl != NULL)
+    return libc_impl (callback, data);
 
   if (maps_init (&mi, getpid()) < 0)
     return -1;
@@ -52,16 +69,20 @@ dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *
   while (maps_next (&mi, &start, &end, &offset, &flags))
     {
       Elf_W(Ehdr) *ehdr = (Elf_W(Ehdr) *) start;
+      Dl_info canonical_info;
 
-      if (mi.path[0] != '\0' && (flags & PROT_EXEC) != 0 && IS_ELF (*ehdr))
+      if (mi.path[0] != '\0' && (flags & PROT_EXEC) != 0 && IS_ELF (*ehdr)
+          && dladdr (ehdr, &canonical_info) == 0
+          && ehdr == canonical_info.dli_fbase)
         {
-          Elf_W(Phdr) *phdr = (Elf_W(Phdr) *) (start + ehdr->e_phoff);
           struct dl_phdr_info info;
+          Elf_W(Phdr) *phdr = (Elf_W(Phdr) *) (start + ehdr->e_phoff);
 
           info.dlpi_addr = start;
-          info.dlpi_name = mi.path;
+          info.dlpi_name = canonical_info.dli_fname;
           info.dlpi_phdr = phdr;
           info.dlpi_phnum = ehdr->e_phnum;
+
           rc = callback (&info, sizeof (info), data);
         }
     }
