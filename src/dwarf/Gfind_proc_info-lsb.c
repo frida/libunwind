@@ -141,7 +141,15 @@ load_debug_frame (const char *file, char **buf, size_t *bufsize, int is_local,
       if (chdr->ch_type == ELFCOMPRESS_ZLIB)
 	{
 	  *bufsize = destSize = chdr->ch_size;
-	  GET_MEMORY(*buf, *bufsize);
+
+	  GET_MEMORY (*buf, *bufsize);
+	  if (!*buf)
+	    {
+	      Debug (2, "failed to allocate zlib .debug_frame buffer, skipping\n");
+	      munmap(ei.image, ei.size);
+	      return 1;
+	    }
+
 	  ret = uncompress((unsigned char *)*buf, &destSize,
 			   shdr->sh_offset + ei.image + sizeof(*chdr),
 			   shdr->sh_size - sizeof(*chdr));
@@ -169,7 +177,14 @@ load_debug_frame (const char *file, char **buf, size_t *bufsize, int is_local,
     {
 #endif
       *bufsize = shdr->sh_size;
-      GET_MEMORY(*buf, *bufsize);
+
+      GET_MEMORY (*buf, *bufsize);
+      if (!*buf)
+        {
+          Debug (2, "failed to allocate .debug_frame buffer, skipping\n");
+          munmap(ei.image, ei.size);
+          return 1;
+        }
 
       memcpy(*buf, shdr->sh_offset + ei.image, *bufsize);
 
@@ -276,7 +291,12 @@ locate_debug_info (unw_addr_space_t as, unw_word_t addr, unw_word_t segbase,
 
   if (!err)
     {
-      GET_MEMORY(fdesc, sizeof (struct unw_debug_frame_list));
+      GET_MEMORY (fdesc, sizeof (struct unw_debug_frame_list));
+      if (!fdesc)
+        {
+          Debug (2, "failed to allocate frame list entry\n");
+          return 0;
+        }
 
       fdesc->start = start;
       fdesc->end = end;
@@ -946,7 +966,7 @@ dwarf_search_unwind_table (unw_addr_space_t as, unw_word_t ip,
   if (as == unw_local_addr_space)
     {
       e = lookup (table, table_len, ip - ip_base - di->load_offset);
-      if (e && &e[1] < &table[table_len])
+      if (e && &e[1] < &table[table_len / sizeof (unw_word_t)])
 	last_ip = e[1].start_ip_offset + ip_base + di->load_offset;
       else
 	last_ip = di->end_ip;
