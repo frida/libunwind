@@ -1,0 +1,89 @@
+option('generic_library',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build libunwind-generic library'
+)
+
+option('coredump_library',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build libunwind-coredump library'
+)
+
+option('ptrace_library',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build libunwind-ptrace library'
+)
+
+option('setjmp_library',
+  type: 'feature',
+  value: 'auto',
+  description: 'Build libunwind-setjmp library'
+)
+
+option('weak_backtrace',
+  type: 'boolean',
+  value: true,
+  description: 'Provide the weak \'backtrace\' symbol'
+)
+
+option('unwind_header',
+  type: 'boolean',
+  value: true,
+  description: 'Export the \'unwind.h\' header'
+)
+
+option('unwind_debug',
+  type: 'feature',
+  value: 'auto',
+  description: 'Turn on debug support (slows down execution)'
+)
+
+option('cxx_exceptions',
+  type: 'feature',
+  value: 'auto',
+  description: 'Use libunwind to handle C++ exceptions'
+)
+
+option('debug_frame',
+  type: 'feature',
+  value: 'auto',
+  description: 'Load the ".debug_frame" section if available'
+)
+
+option('block_signals',
+  type: 'boolean',
+  value: true,
+  description: 'Block signals before performing mutex operations'
+)
+
+option('conservative_checks',
+  type: 'boolean',
+  value: true,
+  description: 'Validate all memory addresses before use'
+)
+
+option('msabi_support',
+  type: 'boolean',
+  value: true,
+  description: 'Support for Microsoft ABI extensions'
+)
+
+option('minidebuginfo',
+  type: 'feature',
+  value: 'auto',
+  description: 'Support for LZMA-compressed symbol tables'
+)
+
+option('zlibdebuginfo',
+  type: 'feature',
+  value: 'auto',
+  description: 'Support for ZLIB-compressed symbol tables'
+)
+
+option('per_thread_cache',
+  type: 'boolean',
+  value: false,
+  description: 'Support for UNW_CACHE_PER_THREAD (which imposes a high TLS memory usage)'
+)

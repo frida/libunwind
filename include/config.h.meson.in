@@ -1,0 +1,250 @@
+/* Block signals before mutex operations */
+#mesondefine CONFIG_BLOCK_SIGNALS
+
+/* Enable Debug Frame */
+#mesondefine CONFIG_DEBUG_FRAME
+
+/* Support for Microsoft ABI extensions */
+#mesondefine CONFIG_MSABI_SUPPORT
+
+/* Define if the weak 'backtrace' symbol is provided. */
+#mesondefine CONFIG_WEAK_BACKTRACE
+
+/* Define to 1 if you want every memory access validated */
+#mesondefine CONSERVATIVE_CHECKS
+
+/* Define to 1 if you have the <asm/ptrace.h> header file. */
+#mesondefine HAVE_ASM_PTRACE_H
+
+/* Define to 1 if you have the <asm/ptrace_offsets.h> header file. */
+#mesondefine HAVE_ASM_PTRACE_OFFSETS_H
+
+/* Define to 1 if you have the <byteswap.h> header file. */
+#mesondefine HAVE_BYTESWAP_H
+
+/* Define to 1 if you have the declaration of `PTRACE_CONT', and to 0 if you
+   don't. */
+#mesondefine HAVE_DECL_PTRACE_CONT
+
+/* Define to 1 if you have the declaration of `PTRACE_POKEDATA', and to 0 if
+   you don't. */
+#mesondefine HAVE_DECL_PTRACE_POKEDATA
+
+/* Define to 1 if you have the declaration of `PTRACE_POKEUSER', and to 0 if
+   you don't. */
+#mesondefine HAVE_DECL_PTRACE_POKEUSER
+
+/* Define to 1 if you have the declaration of `PTRACE_SETREGSET', and to 0 if
+   you don't. */
+#mesondefine HAVE_DECL_PTRACE_SETREGSET
+
+/* Define to 1 if you have the declaration of `PTRACE_SINGLESTEP', and to 0 if
+   you don't. */
+#mesondefine HAVE_DECL_PTRACE_SINGLESTEP
+
+/* Define to 1 if you have the declaration of `PTRACE_SYSCALL', and to 0 if
+   you don't. */
+#mesondefine HAVE_DECL_PTRACE_SYSCALL
+
+/* Define to 1 if you have the declaration of `PTRACE_TRACEME', and to 0 if
+   you don't. */
+#mesondefine HAVE_DECL_PTRACE_TRACEME
+
+/* Define to 1 if you have the declaration of `PT_CONTINUE', and to 0 if you
+   don't. */
+#mesondefine HAVE_DECL_PT_CONTINUE
+
+/* Define to 1 if you have the declaration of `PT_GETFPREGS', and to 0 if you
+   don't. */
+#mesondefine HAVE_DECL_PT_GETFPREGS
+
+/* Define to 1 if you have the declaration of `PT_GETREGS', and to 0 if you
+   don't. */
+#mesondefine HAVE_DECL_PT_GETREGS
+
+/* Define to 1 if you have the declaration of `PT_IO', and to 0 if you don't.
+   */
+#mesondefine HAVE_DECL_PT_IO
+
+/* Define to 1 if you have the declaration of `PT_STEP', and to 0 if you
+   don't. */
+#mesondefine HAVE_DECL_PT_STEP
+
+/* Define to 1 if you have the declaration of `PT_SYSCALL', and to 0 if you
+   don't. */
+#mesondefine HAVE_DECL_PT_SYSCALL
+
+/* Define to 1 if you have the declaration of `PT_TRACE_ME', and to 0 if you
+   don't. */
+#mesondefine HAVE_DECL_PT_TRACE_ME
+
+/* Define to 1 if you have the <dlfcn.h> header file. */
+#mesondefine HAVE_DLFCN_H
+
+/* Define to 1 if you have the `dlmodinfo' function. */
+#mesondefine HAVE_DLMODINFO
+
+/* Define to 1 if you have the `dl_iterate_phdr' function. */
+#mesondefine HAVE_DL_ITERATE_PHDR
+
+/* Define to 1 if you have the `dl_phdr_removals_counter' function. */
+#mesondefine HAVE_DL_PHDR_REMOVALS_COUNTER
+
+/* Define to 1 if you have the <elf.h> header file. */
+#mesondefine HAVE_ELF_H
+
+/* Define to 1 if you have the <endian.h> header file. */
+#mesondefine HAVE_ENDIAN_H
+
+/* Define to 1 if you have the <execinfo.h> header file. */
+#mesondefine HAVE_EXECINFO_H
+
+/* Define to 1 if you have the `getunwind' function. */
+#mesondefine HAVE_GETUNWIND
+
+/* Define to 1 if you have the <ia64intrin.h> header file. */
+#mesondefine HAVE_IA64INTRIN_H
+
+/* Define to 1 if you have the <inttypes.h> header file. */
+#mesondefine HAVE_INTTYPES_H
+
+/* Define to 1 if you have the `uca' library (-luca). */
+#mesondefine HAVE_LIBUCA
+
+/* Define to 1 if you have the <link.h> header file. */
+#mesondefine HAVE_LINK_H
+
+/* Define if you have liblzma */
+#mesondefine HAVE_LZMA
+
+/* Define to 1 if you have the <memory.h> header file. */
+#mesondefine HAVE_MEMORY_H
+
+/* Define to 1 if you have the `mincore' function. */
+#mesondefine HAVE_MINCORE
+
+/* Define to 1 if you have the `pipe2' function. */
+#mesondefine HAVE_PIPE2
+
+/* Define to 1 if you have the <signal.h> header file. */
+#mesondefine HAVE_SIGNAL_H
+
+/* Define to 1 if you have the <stdalign.h> header file. */
+#mesondefine HAVE_STDALIGN_H
+
+/* Define to 1 if you have the <stdatomic.h> header file. */
+#mesondefine HAVE_STDATOMIC_H
+
+/* Define to 1 if you have the <stdint.h> header file. */
+#mesondefine HAVE_STDINT_H
+
+/* Define to 1 if you have the <stdlib.h> header file. */
+#mesondefine HAVE_STDLIB_H
+
+/* Define to 1 if you have the <strings.h> header file. */
+#mesondefine HAVE_STRINGS_H
+
+/* Define to 1 if you have the <string.h> header file. */
+#mesondefine HAVE_STRING_H
+
+/* Define to 1 if `dlpi_subs' is a member of `struct dl_phdr_info'. */
+#mesondefine HAVE_STRUCT_DL_PHDR_INFO_DLPI_SUBS
+
+/* Define to 1 if the system has the type `struct elf_prstatus'. */
+#mesondefine HAVE_STRUCT_ELF_PRSTATUS
+
+/* Define to 1 if the system has the type `struct prstatus'. */
+#mesondefine HAVE_STRUCT_PRSTATUS
+
+/* Define to 1 if you have the <sys/elf.h> header file. */
+#mesondefine HAVE_SYS_ELF_H
+
+/* Define to 1 if you have the <sys/endian.h> header file. */
+#mesondefine HAVE_SYS_ENDIAN_H
+
+/* Define to 1 if you have the <sys/link.h> header file. */
+#mesondefine HAVE_SYS_LINK_H
+
+/* Define to 1 if you have the <sys/param.h> header file. */
+#mesondefine HAVE_SYS_PARAM_H
+
+/* Define to 1 if you have the <sys/procfs.h> header file. */
+#mesondefine HAVE_SYS_PROCFS_H
+
+/* Define to 1 if you have the <sys/ptrace.h> header file. */
+#mesondefine HAVE_SYS_PTRACE_H
+
+/* Define to 1 if you have the <sys/stat.h> header file. */
+#mesondefine HAVE_SYS_STAT_H
+
+/* Define to 1 if you have the <sys/syscall.h> header file. */
+#mesondefine HAVE_SYS_SYSCALL_H
+
+/* Define to 1 if you have the <sys/types.h> header file. */
+#mesondefine HAVE_SYS_TYPES_H
+
+/* Define to 1 if you have the <sys/uc_access.h> header file. */
+#mesondefine HAVE_SYS_UC_ACCESS_H
+
+/* Define to 1 if you have the `ttrace' function. */
+#mesondefine HAVE_TTRACE
+
+/* Define to 1 if you have the <unistd.h> header file. */
+#mesondefine HAVE_UNISTD_H
+
+/* Define if you have libz */
+#mesondefine HAVE_ZLIB
+
+/* Defined if __builtin_unreachable() is available */
+#mesondefine HAVE__BUILTIN_UNREACHABLE
+
+/* Defined if __builtin___clear_cache() is available */
+#mesondefine HAVE__BUILTIN___CLEAR_CACHE
+
+/* Define to 1 if --enable-per-thread-cache */
+#mesondefine HAVE___CACHE_PER_THREAD
+
+/* Define to the sub-directory where libtool stores uninstalled libraries. */
+#mesondefine LT_OBJDIR
+
+/* Name of package */
+#mesondefine PACKAGE
+
+/* Define to the address where bug reports for this package should be sent. */
+#mesondefine PACKAGE_BUGREPORT
+
+/* Define to the full name of this package. */
+#mesondefine PACKAGE_NAME
+
+/* Define to the full name and version of this package. */
+#mesondefine PACKAGE_STRING
+
+/* Define to the one symbol short name of this package. */
+#mesondefine PACKAGE_TARNAME
+
+/* Define to the home page for this package. */
+#mesondefine PACKAGE_URL
+
+/* Define to the version of this package. */
+#mesondefine PACKAGE_VERSION
+
+/* The size of `off_t', as computed by sizeof. */
+#mesondefine SIZEOF_OFF_T
+
+/* Define to 1 if you have the ANSI C header files. */
+#mesondefine STDC_HEADERS
+
+/* Version number of package */
+#mesondefine VERSION
+
+/* Define to empty if `const' does not conform to ANSI C. */
+#mesondefine const
+
+/* Define to `__inline__' or `__inline' if that's what the C compiler
+   calls it, or to nothing if 'inline' is not supported under any name.  */
+#ifndef __cplusplus
+#mesondefine inline
+#endif
+
+/* Define to `unsigned int' if <sys/types.h> does not define. */
+#mesondefine size_t
