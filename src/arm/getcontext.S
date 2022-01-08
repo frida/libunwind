@@ -52,7 +52,7 @@ _Uarm_getcontext:
 	@ retrieve r14 from call site, then store
 	ldr r1, [sp, #8]
 	str r1, [r0, #14 * 4]
-	@ point lr to instruction after call site's stack adjustment
+	@ point lr to instruction after where call site has its stack adjustment
 	add r1, lr, #4
 	str r1, [r0, #15 * 4]
 	ldmfd sp!, {r0, r1}
