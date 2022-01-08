@@ -48,10 +48,11 @@ typedef struct
 
 static const unw_tdep_frame_t empty_frame = { 0, UNW_ARM_FRAME_OTHER, -1, -1, 0, -1, -1, -1 };
 static define_lock (trace_init_lock);
+static struct mempool trace_cache_pool;
+#ifdef HAVE___CACHE_PER_THREAD
 static pthread_once_t trace_cache_once = PTHREAD_ONCE_INIT;
 static sig_atomic_t trace_cache_once_happen;
 static pthread_key_t trace_cache_key;
-static struct mempool trace_cache_pool;
 static _Thread_local  unw_trace_cache_t *tls_cache;
 static _Thread_local  int tls_cache_destroyed;
 
@@ -83,6 +84,7 @@ trace_cache_init_once (void)
   mempool_init (&trace_cache_pool, sizeof (unw_trace_cache_t), 0);
   trace_cache_once_happen = 1;
 }
+#endif
 
 static unw_tdep_frame_t *
 trace_cache_buckets (size_t n)
@@ -106,6 +108,7 @@ trace_cache_create (void)
 {
   unw_trace_cache_t *cache;
 
+#ifdef HAVE___CACHE_PER_THREAD
   if (tls_cache_destroyed)
   {
     /* The current thread is in the process of exiting. Don't recreate
@@ -114,6 +117,7 @@ trace_cache_create (void)
              "thread-locals are being deallocated\n");
     return NULL;
   }
+#endif
 
   if (! (cache = mempool_alloc(&trace_cache_pool)))
   {
@@ -131,7 +135,9 @@ trace_cache_create (void)
   cache->log_size = HASH_MIN_BITS;
   cache->used = 0;
   cache->dtor_count = 0;
+#ifdef HAVE___CACHE_PER_THREAD
   tls_cache_destroyed = 0;  /* Paranoia: should already be 0. */
+#endif
   Debug(5, "allocated cache %p\n", cache);
   return cache;
 }
@@ -182,6 +188,7 @@ trace_cache_get_unthreaded (void)
 static unw_trace_cache_t *
 trace_cache_get (void)
 {
+#ifdef HAVE___CACHE_PER_THREAD
   unw_trace_cache_t *cache;
   if (likely (pthread_once != NULL))
   {
@@ -200,6 +207,7 @@ trace_cache_get (void)
     return cache;
   }
   else
+#endif
   {
     return trace_cache_get_unthreaded();
   }
