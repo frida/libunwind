@@ -57,14 +57,14 @@ aarch64_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
       regs[13] = uc->uc_mcontext.regs[28];
       regs[14] = uc->uc_mcontext.regs[29]; /* FP */
       regs[15] = uc->uc_mcontext.regs[30]; /* LR */
-      regs[16] = GET_FPCTX(uc)->vregs[8];
-      regs[17] = GET_FPCTX(uc)->vregs[9];
-      regs[18] = GET_FPCTX(uc)->vregs[10];
-      regs[19] = GET_FPCTX(uc)->vregs[11];
-      regs[20] = GET_FPCTX(uc)->vregs[12];
-      regs[21] = GET_FPCTX(uc)->vregs[13];
-      regs[22] = GET_FPCTX(uc)->vregs[14];
-      regs[23] = GET_FPCTX(uc)->vregs[15];
+      regs[16] = unw_tdep_context_get_fpregs (uc)[8];
+      regs[17] = unw_tdep_context_get_fpregs (uc)[9];
+      regs[18] = unw_tdep_context_get_fpregs (uc)[10];
+      regs[19] = unw_tdep_context_get_fpregs (uc)[11];
+      regs[20] = unw_tdep_context_get_fpregs (uc)[12];
+      regs[21] = unw_tdep_context_get_fpregs (uc)[13];
+      regs[22] = unw_tdep_context_get_fpregs (uc)[14];
+      regs[23] = unw_tdep_context_get_fpregs (uc)[15];
       unsigned long sp = uc->uc_mcontext.sp;
 
       struct regs_overlay {
@@ -141,8 +141,6 @@ aarch64_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
       );
    }
   unreachable();
-#else
-  printf ("%s: implement me\n", __FUNCTION__);
 #endif
   return -UNW_EINVAL;
 }

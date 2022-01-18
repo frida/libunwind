@@ -232,9 +232,17 @@ typedef ucontext_t unw_tdep_context_t;
 #include "libunwind-common.h"
 #include "libunwind-dynamic.h"
 
+#if defined(__FreeBSD__)
+#define unw_tdep_context_get_gpregs(uc) uc->uc_mcontext.mc_gpregs.gp_x
+#define unw_tdep_context_get_fpregs(uc) uc->uc_mcontext.mc_fpregs.fp_q
+#else
+#define unw_tdep_context_get_gpregs(uc) uc->uc_mcontext.regs
+#define unw_tdep_context_get_fpregs(uc) ((unw_fpsimd_context_t *)(&uc->uc_mcontext.__reserved))->vregs
+#endif
+
 #define unw_tdep_getcontext(uc) ({					\
   unw_tdep_context_t *unw_ctx = (uc);					\
-  register uint64_t unw_base __asm__ ("x0") = (uint64_t) unw_ctx->uc_mcontext.regs; \
+  register uint64_t unw_base __asm__ ("x0") = (uint64_t) unw_tdep_context_get_gpregs (unw_ctx); \
   __asm__ __volatile__ (					        \
      "stp x0, x1, [%[base], #0]\n" \
      "stp x2, x3, [%[base], #16]\n" \

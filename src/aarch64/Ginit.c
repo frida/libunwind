@@ -47,9 +47,9 @@ static inline void *
 uc_addr (unw_tdep_context_t *uc, int reg)
 {
   if (reg >= UNW_AARCH64_X0 && reg < UNW_AARCH64_V0)
-    return &uc->uc_mcontext.regs[reg];
+    return &unw_tdep_context_get_gpregs (uc)[reg];
   else if (reg >= UNW_AARCH64_V0 && reg <= UNW_AARCH64_V31)
-    return &GET_FPCTX(uc)->vregs[reg - UNW_AARCH64_V0];
+    return &unw_tdep_context_get_fpregs (uc)[reg - UNW_AARCH64_V0];
   else
     return NULL;
 }
