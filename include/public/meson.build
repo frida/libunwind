@@ -13,8 +13,16 @@ if not remote_only
   endif
 endif
 
-public_headers += libunwind_arch_h
-public_headers += libunwind_dynamic_h
+public_headers += configure_file(
+  input: libunwind_arch_h,
+  output: '@PLAINNAME@',
+  copy: true,
+)
+public_headers += configure_file(
+  input: libunwind_dynamic_h,
+  output: '@PLAINNAME@',
+  copy: true,
+)
 public_headers += configure_file(
   input: libunwind_common_h_in,
   output: 'libunwind-common.h',
