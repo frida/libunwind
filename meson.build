@@ -164,6 +164,8 @@ foreach d : ptrace_decls
   cdata.set10('HAVE_DECL_' + d, cc.has_header_symbol('sys/ptrace.h', d, prefix: ptrace_prefix))
 endforeach
 
+dl_dep = cc.find_library('dl', required: false)
+
 library_funcs = [
   'dl_iterate_phdr',
   'dl_phdr_removals_counter',
@@ -316,7 +318,7 @@ libunwind_internal_incdirs = include_directories(
   'include' / 'tdep',
   'src',
 )
-libunwind_deps = [lzma_dep, zlib_dep]
+libunwind_deps = [dl_dep, lzma_dep, zlib_dep]
 
 subdir('include')
 subdir('src')
