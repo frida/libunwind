@@ -9,7 +9,11 @@
 #define LINUX_UC_STACK_OFF      0x08
 #define LINUX_UC_MCONTEXT_OFF   0x14
 #define LINUX_UC_SIGMASK_OFF    0x6c
+#ifdef __ANDROID__
+#define LINUX_UC_FPREGS_MEM_OFF 0x74
+#else
 #define LINUX_UC_FPREGS_MEM_OFF 0xec
+#endif
 
 /* The struct sigcontext is located at an offset of 4
    from the stack pointer in the signal frame.         */
