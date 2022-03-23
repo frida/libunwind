@@ -122,6 +122,18 @@ endforeach
 
 cdata.set('SIZEOF_OFF_T', cc.sizeof('off_t'))
 
+if cc.has_type('struct dl_phdr_info',
+               args: ['-D_GNU_SOURCE=1'],
+               prefix: '''#if @0@
+                          #include <link.h>
+                          #endif
+                          #if @1@
+                          #include <sys/link.h>
+                          #endif'''.format(cdata.has('HAVE_LINK_H').to_int(),
+                                           cdata.has('HAVE_SYS_LINK_H').to_int()))
+  cdata.set('HAVE_STRUCT_DL_PHDR_INFO', 1)
+endif
+
 if cc.has_member('struct dl_phdr_info', 'dlpi_subs',
                  args: ['-D_GNU_SOURCE=1'],
                  prefix: '#include <link.h>')

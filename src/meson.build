@@ -89,7 +89,7 @@ os_sources = {
     'arm-generic': ['Gos-freebsd.c'],
   },
   'qnx': {
-    'common': ['os-qnx.c'],
+    'common': ['os-qnx.c', 'dl-iterate-phdr.c'],
     'arm-local': ['Los-other.c'],
     'arm-generic': ['Gos-other.c'],
   },

@@ -23,7 +23,13 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
-#if defined(__ANDROID__) && __ANDROID_API__ < 21
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
+
+#if !defined(HAVE_DL_ITERATE_PHDR)
+
+#if defined(__ANDROID__)
 
 #include <dlfcn.h>
 #include <link.h>
@@ -91,5 +97,71 @@ dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *
 
   return rc;
 }
+
+#elif defined(__QNX__)
+
+#include <dlfcn.h>
+#include <string.h>
+
+#include "libunwind_i.h"
+
+typedef struct _unw_qnx_dl_entry unw_qnx_dl_entry;
+
+struct _unw_qnx_dl_entry
+  {
+    unw_qnx_dl_entry *p_next;
+    int unknown;
+    Link_map *linkmap;
+  };
+
+typedef int (*unw_iterate_phdr_callback) (const struct dl_phdr_info *info,
+                                          size_t size, void *data);
+typedef int (*unw_iterate_phdr_impl) (unw_iterate_phdr_callback callback,
+                                      void *data);
+
+HIDDEN int
+dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size,
+                                  void *data),
+                 void *data)
+{
+  static int initialized = 0;
+  static unw_iterate_phdr_impl libc_impl;
+  unw_qnx_dl_entry **entries, *entry;
+  int rc = 0;
+
+  if (!initialized)
+    {
+      libc_impl = dlsym (RTLD_NEXT, "dl_iterate_phdr");
+      initialized = 1;
+    }
+
+  if (libc_impl != NULL)
+    return libc_impl ((unw_iterate_phdr_callback) callback, data);
+
+  entries = dlopen (NULL, RTLD_NOW);
+
+  for (entry = *entries;
+      entry != NULL && entry->linkmap != NULL;
+      entry = entry->p_next)
+    {
+      Link_map *lm = entry->linkmap;
+      Elf_W(Ehdr) *ehdr = (Elf_W(Ehdr) *) lm->l_addr;
+      Elf_W(Phdr) *phdr = (Elf_W(Phdr) *) (lm->l_addr + ehdr->e_phoff);
+      struct dl_phdr_info info;
+
+      info.dlpi_addr = lm->l_addr;
+      info.dlpi_name = lm->l_path;
+      info.dlpi_phdr = phdr;
+      info.dlpi_phnum = ehdr->e_phnum;
+
+      rc = callback (&info, sizeof (info), data);
+    }
+
+  dlclose (entries);
+
+  return rc;
+}
+
+#endif
 
 #endif

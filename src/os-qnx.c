@@ -35,7 +35,11 @@ struct cb_info
     const char *path;
 };
 
-static int callback(const struct dl_phdr_info *info, size_t size, void *data)
+static int callback(
+#ifdef HAVE_DL_ITERATE_PHDR
+                    const
+#endif
+                    struct dl_phdr_info *info, size_t size, void *data)
 {
   int i;
   struct cb_info *cbi = (struct cb_info*)data;
