@@ -97,6 +97,9 @@ arm_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
       );
    }
   unreachable();
+#elif defined(__QNX__)
+  /* FIXME: Implement for QNX. */
+  unreachable ();
 #else
   printf ("%s: implement me\n", __FUNCTION__);
 #endif

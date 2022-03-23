@@ -41,6 +41,8 @@ _Uarm_getcontext:
 #elif defined(__FreeBSD__)
 	str r0, [r0, #FREEBSD_UC_MCONTEXT_OFF + FREEBSD_MC_R0_OFF]
 	add r0, r0, #FREEBSD_UC_MCONTEXT_OFF + FREEBSD_MC_R0_OFF
+#elif defined(__QNX__)
+	@ Not used on this OS.
 #else
 #error Fix me
 #endif
