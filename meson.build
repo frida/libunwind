@@ -98,6 +98,13 @@ if cc.has_header('threads.h')
 endif
 
 # Type checks
+if cc.has_type(
+    'struct dl_phdr_info',
+    args: '-D_GNU_SOURCE',
+    prefix: '#include <link.h>',
+)
+    cfg.set('HAVE_STRUCT_DL_PHDR_INFO', 1)
+endif
 cfg.set(
     'HAVE_STRUCT_DL_PHDR_INFO_DLPI_SUBS',
     cc.has_member(

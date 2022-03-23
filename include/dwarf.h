@@ -46,7 +46,16 @@ struct elf_dyn_info;
   #else
     #error Could not find <link.h>
   #endif
-  #if defined(__ANDROID__) && defined(__arm__) && __ANDROID_API__ < 21
+  #if !defined(HAVE_STRUCT_DL_PHDR_INFO)
+    struct dl_phdr_info
+      {
+        Elf32_Addr dlpi_addr;
+        const char *dlpi_name;
+        Elf32_Phdr *dlpi_phdr;
+        Elf32_Half dlpi_phnum;
+      };
+  #endif
+  #if !defined(HAVE_DL_ITERATE_PHDR)
     int dl_iterate_phdr(int (*)(struct dl_phdr_info *, size_t, void *), void *);
   #endif
 #endif

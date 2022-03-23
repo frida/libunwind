@@ -112,7 +112,7 @@ elif target_machine.system() == 'sunos'
     _libunwind_srcs_x86_64_os = files('x86_64/Gos-solaris.c')
     _libunwind_srcs_x86_64_os_local = files('x86_64/Los-solaris.c')
 elif target_machine.system() == 'qnx'
-    _libunwind_srcs_os = files('os-qnx.c')
+    _libunwind_srcs_os = files('os-qnx.c', 'dl-iterate-phdr.c')
     _libunwind_srcs_aarch64_os = files('aarch64/Gos-qnx.c')
     _libunwind_srcs_aarch64_os_local = files('aarch64/Los-qnx.c')
     _libunwind_srcs_arm_os = files('arm/Gos-other.c')

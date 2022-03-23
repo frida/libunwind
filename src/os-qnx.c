@@ -52,7 +52,11 @@ struct cb_info
 };
 
 static int
-phdr_callback(const struct dl_phdr_info *info, size_t size, void *data)
+phdr_callback(
+#ifdef HAVE_DL_ITERATE_PHDR
+              const
+#endif
+              struct dl_phdr_info *info, size_t size, void *data)
 {
   int i;
   struct cb_info *cbi = (struct cb_info*)data;
