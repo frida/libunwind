@@ -521,8 +521,6 @@ tdep_trace (unw_cursor_t *cursor, void **buffer, int *size)
          doesn't save the link register in the prologue, e.g. kill. */
       if (likely(ret >= 0))
         ACCESS_MEM_FAST(ret, c->validate, d, cfa + LINUX_SC_LR_OFF, lr);
-#elif defined(__FreeBSD__)
-      printf("XXX\n");
 #endif
 
       /* Resume stack at signal restoration point. The stack is not
@@ -534,7 +532,6 @@ tdep_trace (unw_cursor_t *cursor, void **buffer, int *size)
       break;
 
     case UNW_ARM_FRAME_SYSCALL:
-      printf("XXX1\n");
       break;
 
     default:
