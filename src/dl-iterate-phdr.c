@@ -72,7 +72,7 @@ dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *
   if (maps_init (&mi, getpid()) < 0)
     return -1;
 
-  while (maps_next (&mi, &start, &end, &offset, &flags))
+  while (rc == 0 && maps_next (&mi, &start, &end, &offset, &flags))
     {
       Elf_W(Ehdr) *ehdr = (Elf_W(Ehdr) *) start;
       Dl_info canonical_info;
