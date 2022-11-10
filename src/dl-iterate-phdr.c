@@ -105,6 +105,8 @@ dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *
 
 #include "libunwind_i.h"
 
+#define UNW_QNX_MODULE_FLAG_EXECUTABLE 0x00000200
+
 typedef struct unw_qnx_list_head unw_qnx_list_head_t;
 typedef struct unw_qnx_module_list unw_qnx_module_list_t;
 typedef struct unw_qnx_module unw_qnx_module_t;
@@ -167,7 +169,10 @@ dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size,
       Elf_W(Phdr) *phdr = (Elf_W(Phdr) *) (lm->l_addr + ehdr->e_phoff);
       struct dl_phdr_info info;
 
-      info.dlpi_addr = lm->l_addr;
+      if ((mod->flags & UNW_QNX_MODULE_FLAG_EXECUTABLE) != 0)
+        info.dlpi_addr = 0;
+      else
+        info.dlpi_addr = lm->l_addr;
       info.dlpi_name = lm->l_path;
       info.dlpi_phdr = phdr;
       info.dlpi_phnum = ehdr->e_phnum;

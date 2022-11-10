@@ -200,7 +200,10 @@ load_debug_frame (const char *file, char **buf, size_t *bufsize, int is_local,
   for (i = 0; i < ehdr->e_phnum; ++i)
     if (phdr[i].p_type == PT_LOAD)
       {
-        *load_offset = segbase - phdr[i].p_vaddr;
+	if (segbase != 0)
+	  *load_offset = segbase - phdr[i].p_vaddr;
+	else
+	  *load_offset = phdr[i].p_vaddr;
 
         Debug (4, "%s load offset is 0x%zx\n", file, *load_offset);
 
@@ -965,9 +968,17 @@ dwarf_search_unwind_table (unw_addr_space_t as, unw_word_t ip,
 #ifndef UNW_REMOTE_ONLY
   if (as == unw_local_addr_space)
     {
-      e = lookup (table, table_len, ip - ip_base - di->load_offset);
+      if (segbase != 0)
+	e = lookup (table, table_len, ip - ip_base - di->load_offset);
+      else
+	e = lookup (table, table_len, ip);
       if (e && &e[1] < &table[table_len / sizeof (unw_word_t)])
-	last_ip = e[1].start_ip_offset + ip_base + di->load_offset;
+	{
+	  if (segbase != 0)
+	    last_ip = e[1].start_ip_offset + ip_base + di->load_offset;
+	  else
+	    last_ip = e[1].start_ip_offset;
+	}
       else
 	last_ip = di->end_ip;
     }
@@ -1022,8 +1033,11 @@ dwarf_search_unwind_table (unw_addr_space_t as, unw_word_t ip,
       pi->flags = UNW_PI_FLAG_DEBUG_FRAME;
     }
 
-  pi->start_ip += di->load_offset;
-  pi->end_ip += di->load_offset;
+  if (segbase != 0)
+    {
+      pi->start_ip += di->load_offset;
+      pi->end_ip += di->load_offset;
+    }
 
 #if defined(NEED_LAST_IP)
   pi->last_ip = last_ip;
