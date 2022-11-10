@@ -141,7 +141,7 @@ dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size,
   entries = dlopen (NULL, RTLD_NOW);
 
   for (entry = *entries;
-      entry != NULL && entry->linkmap != NULL;
+      rc == 0 && entry != NULL && entry->linkmap != NULL;
       entry = entry->p_next)
     {
       Link_map *lm = entry->linkmap;
