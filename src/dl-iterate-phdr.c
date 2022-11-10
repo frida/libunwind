@@ -105,13 +105,31 @@ dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size, void *
 
 #include "libunwind_i.h"
 
-typedef struct _unw_qnx_dl_entry unw_qnx_dl_entry;
+typedef struct unw_qnx_list_head unw_qnx_list_head_t;
+typedef struct unw_qnx_module_list unw_qnx_module_list_t;
+typedef struct unw_qnx_module unw_qnx_module_t;
 
-struct _unw_qnx_dl_entry
+struct unw_qnx_list_head
   {
-    unw_qnx_dl_entry *p_next;
-    int unknown;
-    Link_map *linkmap;
+    unw_qnx_list_head_t *next;
+    unw_qnx_list_head_t *prev;
+  };
+
+struct unw_qnx_module_list
+  {
+    unw_qnx_list_head_t list;
+    unw_qnx_module_t *module;
+    unw_qnx_list_head_t *root;
+    uint32_t flags;
+  };
+
+struct unw_qnx_module
+  {
+    Link_map map;
+    int ref_count;
+    uint32_t flags;
+    const char *name;
+    /* ... */
   };
 
 typedef int (*unw_iterate_phdr_callback) (const struct dl_phdr_info *info,
@@ -126,7 +144,7 @@ dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size,
 {
   static int initialized = 0;
   static unw_iterate_phdr_impl libc_impl;
-  unw_qnx_dl_entry **entries, *entry;
+  unw_qnx_list_head_t *entries, *entry;
   int rc = 0;
 
   if (!initialized)
@@ -140,11 +158,11 @@ dl_iterate_phdr (int (*callback) (struct dl_phdr_info *info, size_t size,
 
   entries = dlopen (NULL, RTLD_NOW);
 
-  for (entry = *entries;
-      rc == 0 && entry != NULL && entry->linkmap != NULL;
-      entry = entry->p_next)
+  for (entry = entries->next; rc == 0 && entry != entries; entry = entry->next)
     {
-      Link_map *lm = entry->linkmap;
+      const unw_qnx_module_list_t *l = (unw_qnx_module_list_t *) entry;
+      const unw_qnx_module_t *mod = l->module;
+      const Link_map *lm = &mod->map;
       Elf_W(Ehdr) *ehdr = (Elf_W(Ehdr) *) lm->l_addr;
       Elf_W(Phdr) *phdr = (Elf_W(Phdr) *) (lm->l_addr + ehdr->e_phoff);
       struct dl_phdr_info info;
