@@ -236,8 +236,8 @@ locate_debug_info (unw_addr_space_t as, unw_word_t addr, const char *dlname,
   char path[PATH_MAX];
   char *name = path;
   int err;
-  char *buf;
-  size_t bufsize;
+  char *buf = NULL;
+  size_t bufsize = 0;
 
   /* First, see if we loaded this frame already.  */
 
