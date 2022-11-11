@@ -141,7 +141,7 @@ unw_step (unw_cursor_t *cursor)
 
   /* Fall back on APCS frame parsing.
      Note: This won't work in case the ARM EABI is used. */
-#ifdef __FreeBSD__
+#if defined (__FreeBSD__) || defined (__QNX__)
   if (0)
 #else
   if (unlikely (ret < 0))
