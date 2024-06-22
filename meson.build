@@ -15,6 +15,7 @@ arch_from_meson = {
   'riscv32': 'riscv',
   'riscv64': 'riscv',
   'ppc': 'ppc32',
+  'powerpc': 'ppc32',
   'sh4': 'sh',
 }
 

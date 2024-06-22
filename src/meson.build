@@ -737,7 +737,7 @@ if not remote_only
   foreach arch : archs_to_include
     ads = arch_dependent_sources[arch]
     foreach source : ads['common'] + ads['local']
-      local_sources += target_arch / source
+      local_sources += arch / source
     endforeach
   endforeach
 
