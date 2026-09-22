@@ -80,7 +80,7 @@ os_sources = {
     'common': ['os-hpux.c'],
   },
   'freebsd': {
-    'common': ['os-freebsd.c'],
+    'common': ['os-freebsd.c'] + (host_is_prospero ? ['dl-iterate-phdr.c'] : []),
     'x86-local': ['Los-freebsd.c', 'getcontext-freebsd.S'],
     'x86-generic': ['Gos-freebsd.c'],
     'x86_64-local': ['Los-freebsd.c'],
