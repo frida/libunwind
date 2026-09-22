@@ -12,6 +12,8 @@ pkg = import('pkgconfig')
 cc = meson.get_compiler('c')
 cpp = meson.get_compiler('cpp')
 
+host_is_prospero = host_machine.system() == 'freebsd' and cc.get_define('__PROSPERO__') != ''
+
 cfg = configuration_data()
 
 # Set basic parameters of the build

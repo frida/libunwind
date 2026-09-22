@@ -88,6 +88,9 @@ elif target_machine.system() == 'hpux'
     _libunwind_srcs_os = files('os-hpux.c')
 elif target_machine.system() == 'freebsd'
     _libunwind_srcs_os = files('os-freebsd.c')
+    if host_is_prospero
+        _libunwind_srcs_os += files('dl-iterate-phdr.c')
+    endif
     _libunwind_srcs_aarch64_os = files('aarch64/Gos-freebsd.c')
     _libunwind_srcs_aarch64_os_local = files(
         'aarch64/Los-freebsd.c',
