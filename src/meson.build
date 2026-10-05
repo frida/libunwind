@@ -62,7 +62,7 @@ if support_cxx_exceptions
 endif
 
 _libunwind_srcs_os_local = []
-if target_machine.system() == 'linux'
+if target_machine.system() in ['linux', 'android']
     _libunwind_srcs_os = files('dl-iterate-phdr.c', 'os-linux.c')
     if support_cxx_exceptions
         _libunwind_srcs_os_local = files('mi/_ReadSLEB.c', 'mi/_ReadULEB.c')

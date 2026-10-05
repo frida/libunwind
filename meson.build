@@ -176,7 +176,7 @@ if cc.compiles(
 endif
 
 # Enable non-standard C functions
-if target_machine.system() in ['linux', 'hpux', 'freebsd', 'qnx']
+if target_machine.system() in ['linux', 'android', 'hpux', 'freebsd', 'qnx']
     add_project_arguments('-D_GNU_SOURCE', language: ['c', 'cpp'])
 elif target_machine.system() == 'sunos'
     add_project_arguments('-D__EXTENSIONS__', language: 'c')
@@ -211,6 +211,7 @@ endif
 # possible and if not set UNW_REMOTE_ONLY to optimize away some details that only matter for that.
 unw_remote_only = host_machine.cpu_family() != target_machine.cpu_family() or host_machine.system() not in [
     'linux',
+    'android',
     'hpux',
     'freebsd',
     'sunos',
