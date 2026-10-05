@@ -1245,4 +1245,6 @@ if build_setjmp
     )
 endif
 
-subdir('abi')
+if not meson.is_subproject()
+    subdir('abi')
+endif

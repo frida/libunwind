@@ -98,3 +98,6 @@ option(
     value: false,
     description: 'enable debug support (slows down execution) CAUTION: changes the ABI',
 )
+
+option('tests', type: 'feature', value: 'auto',
+       description: 'Build the test suite')

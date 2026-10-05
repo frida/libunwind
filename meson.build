@@ -14,6 +14,10 @@ cpp = meson.get_compiler('cpp')
 
 host_is_prospero = host_machine.system() == 'freebsd' and cc.get_define('__PROSPERO__') != ''
 
+if meson.is_subproject() and cc.get_argument_syntax() != 'msvc'
+    add_project_arguments('-w', language: ['c', 'cpp'])
+endif
+
 cfg = configuration_data()
 
 # Set basic parameters of the build
@@ -466,6 +470,8 @@ elif archnames[target_machine.cpu_family()] == 'ppc64'
 endif
 
 subdir('include')
-subdir('doc')
 subdir('src')
-subdir('tests')
+if get_option('tests').disable_auto_if(meson.is_subproject() or not meson.can_run_host_binaries()).allowed()
+    subdir('doc')
+    subdir('tests')
+endif
