@@ -36,7 +36,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 # include <asm/ptrace_offsets.h>
 #endif
 
-#if defined(__powerpc64__) && defined(__FreeBSD__)
+#if defined(__powerpc__) && defined(__FreeBSD__)
 #define PT_R0   0
 #define PT_R1   1
 #define PT_R2   2
@@ -70,10 +70,12 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #define PT_R30  30
 #define PT_R31  31
 #define PT_NIP  32
+#define PT_CCR  33
 #define PT_CTR  35
 #define PT_LNK  36
 #define PT_XER  37
 #define PT_FPR0  48
+#define PT_FPSCR (PT_FPR0 + 2*32 + 1)
 #define PT_VR0  82
 #define PT_VSCR (PT_VR0 + 32*2 + 1)
 #define PT_VRSAVE (PT_VR0 + 33*2)
@@ -467,7 +469,7 @@ const int _UPT_reg_offset[UNW_REG_LAST + 1] =
     UNW_FP_OFF(b, 31)
 
 #define UNW_PPC32_REGS \
-    [UNW_PPC32_FPSCR] = UNW_PPC_PT(FPSCR), \
+    [UNW_PPC32_NIP] = UNW_PPC_PT(NIP), \
     [UNW_PPC32_CCR] = UNW_PPC_PT(CCR)
 
 #define UNW_VR_OFF(i)   \
@@ -621,64 +623,6 @@ const int _UPT_reg_offset[UNW_REG_LAST + 1] =
     [UNW_AARCH64_SP]       = 0xf8,
     [UNW_AARCH64_PC]       = 0x100,
     [UNW_AARCH64_PSTATE]   = 0x108
-#elif defined(UNW_TARGET_TILEGX)
-    [UNW_TILEGX_R0]    = 0x00,
-    [UNW_TILEGX_R1]    = 0x08,
-    [UNW_TILEGX_R2]    = 0x10,
-    [UNW_TILEGX_R3]    = 0x08,
-    [UNW_TILEGX_R4]    = 0x20,
-    [UNW_TILEGX_R5]    = 0x28,
-    [UNW_TILEGX_R6]    = 0x30,
-    [UNW_TILEGX_R7]    = 0x38,
-    [UNW_TILEGX_R8]    = 0x40,
-    [UNW_TILEGX_R9]    = 0x48,
-    [UNW_TILEGX_R10]    = 0x50,
-    [UNW_TILEGX_R11]    = 0x58,
-    [UNW_TILEGX_R12]    = 0x60,
-    [UNW_TILEGX_R13]    = 0x68,
-    [UNW_TILEGX_R14]    = 0x70,
-    [UNW_TILEGX_R15]    = 0x78,
-    [UNW_TILEGX_R16]    = 0x80,
-    [UNW_TILEGX_R17]    = 0x88,
-    [UNW_TILEGX_R18]    = 0x90,
-    [UNW_TILEGX_R19]    = 0x98,
-    [UNW_TILEGX_R20]    = 0xa0,
-    [UNW_TILEGX_R21]    = 0xa8,
-    [UNW_TILEGX_R22]    = 0xb0,
-    [UNW_TILEGX_R23]    = 0xb8,
-    [UNW_TILEGX_R24]    = 0xc0,
-    [UNW_TILEGX_R25]    = 0xc8,
-    [UNW_TILEGX_R26]    = 0xd0,
-    [UNW_TILEGX_R27]    = 0xd8,
-    [UNW_TILEGX_R28]    = 0xe0,
-    [UNW_TILEGX_R29]    = 0xe8,
-    [UNW_TILEGX_R30]    = 0xf0,
-    [UNW_TILEGX_R31]    = 0xf8,
-    [UNW_TILEGX_R32]    = 0x100,
-    [UNW_TILEGX_R33]    = 0x108,
-    [UNW_TILEGX_R34]    = 0x110,
-    [UNW_TILEGX_R35]    = 0x118,
-    [UNW_TILEGX_R36]    = 0x120,
-    [UNW_TILEGX_R37]    = 0x128,
-    [UNW_TILEGX_R38]    = 0x130,
-    [UNW_TILEGX_R39]    = 0x138,
-    [UNW_TILEGX_R40]    = 0x140,
-    [UNW_TILEGX_R41]    = 0x148,
-    [UNW_TILEGX_R42]    = 0x150,
-    [UNW_TILEGX_R43]    = 0x158,
-    [UNW_TILEGX_R44]    = 0x160,
-    [UNW_TILEGX_R45]    = 0x168,
-    [UNW_TILEGX_R46]    = 0x170,
-    [UNW_TILEGX_R47]    = 0x178,
-    [UNW_TILEGX_R48]    = 0x180,
-    [UNW_TILEGX_R49]    = 0x188,
-    [UNW_TILEGX_R50]    = 0x190,
-    [UNW_TILEGX_R51]    = 0x198,
-    [UNW_TILEGX_R52]    = 0x1a0,
-    [UNW_TILEGX_R53]    = 0x1a8,
-    [UNW_TILEGX_R54]    = 0x1b0,
-    [UNW_TILEGX_R55]    = 0x1b8,
-    [UNW_TILEGX_PC]     = 0x1a0
 #elif defined(UNW_TARGET_S390X)
     [UNW_S390X_R0]      = 0x10,
     [UNW_S390X_R1]      = 0x18,
@@ -757,39 +701,201 @@ const int _UPT_reg_offset[UNW_REG_LAST + 1] =
 #elif defined(UNW_TARGET_LOONGARCH64)
 # include <asm/reg.h>
 
-    [UNW_LOONGARCH64_R0]  = LOONGARCH64_EF_R0,
-    [UNW_LOONGARCH64_R1]  = LOONGARCH64_EF_R1,
-    [UNW_LOONGARCH64_R2]  = LOONGARCH64_EF_R2,
-    [UNW_LOONGARCH64_R3]  = LOONGARCH64_EF_R3,
-    [UNW_LOONGARCH64_R4]  = LOONGARCH64_EF_R4,
-    [UNW_LOONGARCH64_R5]  = LOONGARCH64_EF_R5,
-    [UNW_LOONGARCH64_R6]  = LOONGARCH64_EF_R6,
-    [UNW_LOONGARCH64_R7]  = LOONGARCH64_EF_R7,
-    [UNW_LOONGARCH64_R8]  = LOONGARCH64_EF_R8,
-    [UNW_LOONGARCH64_R9]  = LOONGARCH64_EF_R9,
-    [UNW_LOONGARCH64_R10] = LOONGARCH64_EF_R10,
-    [UNW_LOONGARCH64_R11] = LOONGARCH64_EF_R11,
-    [UNW_LOONGARCH64_R12] = LOONGARCH64_EF_R12,
-    [UNW_LOONGARCH64_R13] = LOONGARCH64_EF_R13,
-    [UNW_LOONGARCH64_R14] = LOONGARCH64_EF_R14,
-    [UNW_LOONGARCH64_R15] = LOONGARCH64_EF_R15,
-    [UNW_LOONGARCH64_R16] = LOONGARCH64_EF_R16,
-    [UNW_LOONGARCH64_R17] = LOONGARCH64_EF_R17,
-    [UNW_LOONGARCH64_R18] = LOONGARCH64_EF_R18,
-    [UNW_LOONGARCH64_R19] = LOONGARCH64_EF_R19,
-    [UNW_LOONGARCH64_R20] = LOONGARCH64_EF_R20,
-    [UNW_LOONGARCH64_R21] = LOONGARCH64_EF_R21,
-    [UNW_LOONGARCH64_R22] = LOONGARCH64_EF_R22,
-    [UNW_LOONGARCH64_R23] = LOONGARCH64_EF_R23,
-    [UNW_LOONGARCH64_R24] = LOONGARCH64_EF_R24,
-    [UNW_LOONGARCH64_R25] = LOONGARCH64_EF_R25,
-    [UNW_LOONGARCH64_R26] = LOONGARCH64_EF_R26,
-    [UNW_LOONGARCH64_R27] = LOONGARCH64_EF_R27,
-    [UNW_LOONGARCH64_R28] = LOONGARCH64_EF_R28,
-    [UNW_LOONGARCH64_R29] = LOONGARCH64_EF_R29,
-    [UNW_LOONGARCH64_R30] = LOONGARCH64_EF_R30,
-    [UNW_LOONGARCH64_R31] = LOONGARCH64_EF_R31,
-    [UNW_LOONGARCH64_PC]  = LOONGARCH64_EF_CSR_EPC
+    [UNW_LOONGARCH64_R0]  = LOONGARCH_EF_R0,
+    [UNW_LOONGARCH64_R1]  = LOONGARCH_EF_R1,
+    [UNW_LOONGARCH64_R2]  = LOONGARCH_EF_R2,
+    [UNW_LOONGARCH64_R3]  = LOONGARCH_EF_R3,
+    [UNW_LOONGARCH64_R4]  = LOONGARCH_EF_R4,
+    [UNW_LOONGARCH64_R5]  = LOONGARCH_EF_R5,
+    [UNW_LOONGARCH64_R6]  = LOONGARCH_EF_R6,
+    [UNW_LOONGARCH64_R7]  = LOONGARCH_EF_R7,
+    [UNW_LOONGARCH64_R8]  = LOONGARCH_EF_R8,
+    [UNW_LOONGARCH64_R9]  = LOONGARCH_EF_R9,
+    [UNW_LOONGARCH64_R10] = LOONGARCH_EF_R10,
+    [UNW_LOONGARCH64_R11] = LOONGARCH_EF_R11,
+    [UNW_LOONGARCH64_R12] = LOONGARCH_EF_R12,
+    [UNW_LOONGARCH64_R13] = LOONGARCH_EF_R13,
+    [UNW_LOONGARCH64_R14] = LOONGARCH_EF_R14,
+    [UNW_LOONGARCH64_R15] = LOONGARCH_EF_R15,
+    [UNW_LOONGARCH64_R16] = LOONGARCH_EF_R16,
+    [UNW_LOONGARCH64_R17] = LOONGARCH_EF_R17,
+    [UNW_LOONGARCH64_R18] = LOONGARCH_EF_R18,
+    [UNW_LOONGARCH64_R19] = LOONGARCH_EF_R19,
+    [UNW_LOONGARCH64_R20] = LOONGARCH_EF_R20,
+    [UNW_LOONGARCH64_R21] = LOONGARCH_EF_R21,
+    [UNW_LOONGARCH64_R22] = LOONGARCH_EF_R22,
+    [UNW_LOONGARCH64_R23] = LOONGARCH_EF_R23,
+    [UNW_LOONGARCH64_R24] = LOONGARCH_EF_R24,
+    [UNW_LOONGARCH64_R25] = LOONGARCH_EF_R25,
+    [UNW_LOONGARCH64_R26] = LOONGARCH_EF_R26,
+    [UNW_LOONGARCH64_R27] = LOONGARCH_EF_R27,
+    [UNW_LOONGARCH64_R28] = LOONGARCH_EF_R28,
+    [UNW_LOONGARCH64_R29] = LOONGARCH_EF_R29,
+    [UNW_LOONGARCH64_R30] = LOONGARCH_EF_R30,
+    [UNW_LOONGARCH64_R31] = LOONGARCH_EF_R31,
+    [UNW_LOONGARCH64_PC]  = LOONGARCH_EF_CSR_ERA
+#elif defined(UNW_TARGET_ALPHA)
+    /* Offsets into gregset_t (used by PTRACE_GETREGSET):
+       [0]-[30] = GPRs $0-$30, [31] = PC, [32] = unique.
+       PTRACE_PEEKUSER uses the same GPR offsets but PC is at
+       index 32 (0x100) instead of 31 -- handled in _UPT_access_reg. */
+    [UNW_ALPHA_R0]  = 0x000,
+    [UNW_ALPHA_R1]  = 0x008,
+    [UNW_ALPHA_R2]  = 0x010,
+    [UNW_ALPHA_R3]  = 0x018,
+    [UNW_ALPHA_R4]  = 0x020,
+    [UNW_ALPHA_R5]  = 0x028,
+    [UNW_ALPHA_R6]  = 0x030,
+    [UNW_ALPHA_R7]  = 0x038,
+    [UNW_ALPHA_R8]  = 0x040,
+    [UNW_ALPHA_R9]  = 0x048,
+    [UNW_ALPHA_R10] = 0x050,
+    [UNW_ALPHA_R11] = 0x058,
+    [UNW_ALPHA_R12] = 0x060,
+    [UNW_ALPHA_R13] = 0x068,
+    [UNW_ALPHA_R14] = 0x070,
+    [UNW_ALPHA_R15] = 0x078,
+    [UNW_ALPHA_R16] = 0x080,
+    [UNW_ALPHA_R17] = 0x088,
+    [UNW_ALPHA_R18] = 0x090,
+    [UNW_ALPHA_R19] = 0x098,
+    [UNW_ALPHA_R20] = 0x0a0,
+    [UNW_ALPHA_R21] = 0x0a8,
+    [UNW_ALPHA_R22] = 0x0b0,
+    [UNW_ALPHA_R23] = 0x0b8,
+    [UNW_ALPHA_R24] = 0x0c0,
+    [UNW_ALPHA_R25] = 0x0c8,
+    [UNW_ALPHA_R26] = 0x0d0,
+    [UNW_ALPHA_R27] = 0x0d8,
+    [UNW_ALPHA_R28] = 0x0e0,
+    [UNW_ALPHA_R29] = 0x0e8,
+    [UNW_ALPHA_R30] = 0x0f0,
+    /* $31 is hardwired zero, no entry needed */
+    [UNW_ALPHA_PC]  = 0x0f8     /* gregset index 31 */
+#elif defined(UNW_TARGET_SPARC64)
+    /* Offsets into elf_gregset_t (36 × 8 bytes) as returned by
+       PTRACE_GETREGSET(NT_PRSTATUS): g0-g7 at [0..7], o0-o7 at [8..15],
+       l0-l7 at [16..23], i0-i7 at [24..31], tstate at [32], tpc at [33].  */
+
+    [UNW_SPARC64_G0]       = (0 * 8),
+    [UNW_SPARC64_G1]       = (1 * 8),
+    [UNW_SPARC64_G2]       = (2 * 8),
+    [UNW_SPARC64_G3]       = (3 * 8),
+    [UNW_SPARC64_G4]       = (4 * 8),
+    [UNW_SPARC64_G5]       = (5 * 8),
+    [UNW_SPARC64_G6]       = (6 * 8),
+    [UNW_SPARC64_G7]       = (7 * 8),
+
+    [UNW_SPARC64_O0]       = (8 * 8),
+    [UNW_SPARC64_O1]       = (9 * 8),
+    [UNW_SPARC64_O2]       = (10 * 8),
+    [UNW_SPARC64_O3]       = (11 * 8),
+    [UNW_SPARC64_O4]       = (12 * 8),
+    [UNW_SPARC64_O5]       = (13 * 8),
+    [UNW_SPARC64_O6]       = (14 * 8),
+    [UNW_SPARC64_O7]       = (15 * 8),
+
+    /* PC (tpc) is at index 33 in elf_gregset_t returned by PTRACE_GETREGSET. */
+    [UNW_SPARC64_PC]       = (33 * 8),
+
+    /* Local and input registers are at indices 16-31 in elf_gregset_t.  */
+
+    [UNW_SPARC64_L0]       = (16 * 8),
+    [UNW_SPARC64_L1]       = (17 * 8),
+    [UNW_SPARC64_L2]       = (18 * 8),
+    [UNW_SPARC64_L3]       = (19 * 8),
+    [UNW_SPARC64_L4]       = (20 * 8),
+    [UNW_SPARC64_L5]       = (21 * 8),
+    [UNW_SPARC64_L6]       = (22 * 8),
+    [UNW_SPARC64_L7]       = (23 * 8),
+
+    [UNW_SPARC64_I0]       = (24 * 8),
+    [UNW_SPARC64_I1]       = (25 * 8),
+    [UNW_SPARC64_I2]       = (26 * 8),
+    [UNW_SPARC64_I3]       = (27 * 8),
+    [UNW_SPARC64_I4]       = (28 * 8),
+    [UNW_SPARC64_I5]       = (29 * 8),
+    [UNW_SPARC64_I6]       = (30 * 8),
+    [UNW_SPARC64_I7]       = (31 * 8),
+
+    /* The 64 32-bit floating-point registers are available in the
+       structure returned by PTRACE_GETFPREGS  */
+
+    [UNW_SPARC64_F0]       = (0 * 4),
+    [UNW_SPARC64_F1]       = (1 * 4),
+    [UNW_SPARC64_F2]       = (2 * 4),
+    [UNW_SPARC64_F3]       = (3 * 4),
+    [UNW_SPARC64_F4]       = (4 * 4),
+    [UNW_SPARC64_F5]       = (5 * 4),
+    [UNW_SPARC64_F6]       = (6 * 4),
+    [UNW_SPARC64_F7]       = (7 * 4),
+    [UNW_SPARC64_F8]       = (8 * 4),
+    [UNW_SPARC64_F9]       = (9 * 4),
+    [UNW_SPARC64_F10]      = (10 * 4),
+    [UNW_SPARC64_F11]      = (11 * 4),
+    [UNW_SPARC64_F12]      = (12 * 4),
+    [UNW_SPARC64_F13]      = (13 * 4),
+    [UNW_SPARC64_F14]      = (14 * 4),
+    [UNW_SPARC64_F15]      = (15 * 4),
+    [UNW_SPARC64_F16]      = (16 * 4),
+    [UNW_SPARC64_F17]      = (17 * 4),
+    [UNW_SPARC64_F18]      = (18 * 4),
+    [UNW_SPARC64_F19]      = (19 * 4),
+    [UNW_SPARC64_F20]      = (20 * 4),
+    [UNW_SPARC64_F21]      = (21 * 4),
+    [UNW_SPARC64_F22]      = (22 * 4),
+    [UNW_SPARC64_F23]      = (23 * 4),
+    [UNW_SPARC64_F24]      = (24 * 4),
+    [UNW_SPARC64_F25]      = (25 * 4),
+    [UNW_SPARC64_F26]      = (26 * 4),
+    [UNW_SPARC64_F27]      = (27 * 4),
+    [UNW_SPARC64_F28]      = (28 * 4),
+    [UNW_SPARC64_F29]      = (29 * 4),
+    [UNW_SPARC64_F30]      = (30 * 4),
+    [UNW_SPARC64_F31]      = (31 * 4),
+    [UNW_SPARC64_F32]      = (32 * 4),
+    [UNW_SPARC64_F33]      = (33 * 4),
+    [UNW_SPARC64_F34]      = (34 * 4),
+    [UNW_SPARC64_F35]      = (35 * 4),
+    [UNW_SPARC64_F36]      = (36 * 4),
+    [UNW_SPARC64_F37]      = (37 * 4),
+    [UNW_SPARC64_F38]      = (38 * 4),
+    [UNW_SPARC64_F39]      = (39 * 4),
+    [UNW_SPARC64_F40]      = (40 * 4),
+    [UNW_SPARC64_F41]      = (41 * 4),
+    [UNW_SPARC64_F42]      = (42 * 4),
+    [UNW_SPARC64_F43]      = (43 * 4),
+    [UNW_SPARC64_F44]      = (44 * 4),
+    [UNW_SPARC64_F45]      = (45 * 4),
+    [UNW_SPARC64_F46]      = (46 * 4),
+    [UNW_SPARC64_F47]      = (47 * 4),
+    [UNW_SPARC64_F48]      = (48 * 4),
+    [UNW_SPARC64_F49]      = (49 * 4),
+    [UNW_SPARC64_F50]      = (50 * 4),
+    [UNW_SPARC64_F51]      = (51 * 4),
+    [UNW_SPARC64_F52]      = (52 * 4),
+    [UNW_SPARC64_F53]      = (53 * 4),
+    [UNW_SPARC64_F54]      = (54 * 4),
+    [UNW_SPARC64_F55]      = (55 * 4),
+    [UNW_SPARC64_F56]      = (56 * 4),
+    [UNW_SPARC64_F57]      = (57 * 4),
+    [UNW_SPARC64_F58]      = (58 * 4),
+    [UNW_SPARC64_F59]      = (59 * 4),
+    [UNW_SPARC64_F60]      = (60 * 4),
+    [UNW_SPARC64_F61]      = (61 * 4),
+    [UNW_SPARC64_F62]      = (62 * 4),
+    [UNW_SPARC64_F63]      = (63 * 4),
+
+    /* The following control and status registers are not available in
+       pt_regs.  */
+
+    [UNW_SPARC64_FCC0]     = -1,
+    [UNW_SPARC64_FCC1]     = -1,
+    [UNW_SPARC64_FCC2]     = -1,
+    [UNW_SPARC64_FCC3]     = -1,
+    [UNW_SPARC64_ICC]      = -1,
+    [UNW_SPARC64_SFP]      = -1,
+    [UNW_SPARC64_GSR]      = -1
 #else
 # error Fix me.
 #endif

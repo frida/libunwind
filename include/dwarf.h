@@ -32,11 +32,11 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 struct dwarf_cursor;    /* forward-declaration */
 struct elf_dyn_info;
 
-#include "dwarf-config.h"
-
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #endif
+
+#include "dwarf-config.h"
 
 #ifndef UNW_REMOTE_ONLY
   #if defined(HAVE_LINK_H)
@@ -46,16 +46,7 @@ struct elf_dyn_info;
   #else
     #error Could not find <link.h>
   #endif
-  #if !defined(HAVE_STRUCT_DL_PHDR_INFO)
-    struct dl_phdr_info
-      {
-        Elf32_Addr dlpi_addr;
-        const char *dlpi_name;
-        Elf32_Phdr *dlpi_phdr;
-        Elf32_Half dlpi_phnum;
-      };
-  #endif
-  #if !defined(HAVE_DL_ITERATE_PHDR)
+  #if defined(__ANDROID__) && defined(__arm__) && __ANDROID_API__ < 21
     int dl_iterate_phdr(int (*)(struct dl_phdr_info *, size_t, void *), void *);
   #endif
 #endif
@@ -285,6 +276,7 @@ typedef struct dwarf_reg_cache_entry
     unsigned short hint;              /* hint for next rs to try (or -1) */
     unsigned short valid : 1;         /* optional machine-dependent signal info */
     unsigned short signal_frame : 1;  /* optional machine-dependent signal info */
+    unsigned short use_prev_instr : 1; /* use_prev_instr for the next frame */
   }
 dwarf_reg_cache_entry_t;
 
@@ -380,8 +372,6 @@ struct unw_debug_frame_list
     /* The start (inclusive) and end (exclusive) of the described region.  */
     unw_word_t start;
     unw_word_t end;
-    /* ELF load offset */
-    unw_word_t load_offset;
     /* The debug frame itself.  */
     char *debug_frame;
     size_t debug_frame_size;
@@ -431,7 +421,7 @@ extern int dwarf_search_unwind_table (unw_addr_space_t as,
                                       int need_unwind_info, void *arg);
 
 extern int dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
-                                    char *path, unw_word_t segbase, unw_word_t mapoff,
+                                    const char *path, unw_word_t segbase, unw_word_t mapoff,
                                     unw_word_t ip);
 extern void dwarf_put_unwind_info (unw_addr_space_t as,
                                    unw_proc_info_t *pi, void *arg);

@@ -9,6 +9,10 @@
 
 #include <sys/resource.h>
 
+#if defined(__linux__)
+# include <sys/auxv.h>
+#endif
+
 #define panic(args...)	{ fprintf (stderr, args);  abort(); }
 
 extern vector signed int vec_init ();
@@ -16,9 +20,29 @@ extern void vec_print (vector signed int v);
 
 vector signed int vec_stack (int count);
 
+/* Probe for AltiVec support at runtime.  The test is compiled with
+   -maltivec unconditionally, so we must avoid executing any AltiVec
+   instruction on a CPU that lacks the feature -- otherwise SIGILL.  */
+static int
+altivec_is_available (void)
+{
+#if defined(__linux__) && defined(AT_HWCAP) && defined(PPC_FEATURE_HAS_ALTIVEC)
+  return (getauxval (AT_HWCAP) & PPC_FEATURE_HAS_ALTIVEC) != 0;
+#else
+  /* No reliable runtime probe; assume present and let the kernel SIGILL
+     us if not.  */
+  return 1;
+#endif
+}
+
 int
 main ()
 {
+  if (!altivec_is_available ())
+    {
+      fprintf (stderr, "AltiVec not available on this CPU; skipping.\n");
+      return 77;
+    }
   printf ("&vec_stack = %016lx\n", (unsigned long) vec_stack);
   vec_stack (3);
   return 0;
@@ -38,7 +62,12 @@ vec_stack (int count)
   register vector signed int v8;
   register vector signed int v9;
 
-  unw_fpreg_t vr;
+  /* Vector registers are 16 bytes on ppc64.  Although unw_get_fpreg()
+     takes an unw_fpreg_t* (8 bytes on ppc64), the library writes the
+     full 16-byte register into the buffer when reading a V register
+     that was saved to memory (DWARF MEM_LOC path), so the caller must
+     provide a 16-byte buffer.  Use unw_tdep_vreg_t for that. */
+  unw_tdep_vreg_t vr;
 
   unw_cursor_t cursor;
   unw_word_t ip, sp;
@@ -69,7 +98,7 @@ vec_stack (int count)
 		  panic ("FAILURE: unw_get_reg returned %d for UNW_REG_SP\n",
 			 ret);
 		}
-	      if ((ret = unw_get_fpreg (&cursor, UNW_PPC64_V30, &vr)) < 0)
+	      if ((ret = unw_get_fpreg (&cursor, UNW_PPC64_V30, (unw_fpreg_t *)&vr)) < 0)
 		{
 		  panic
 		    ("FAILURE: unw_get_vreg returned %d for UNW_PPC64_V30\n",
@@ -99,6 +128,12 @@ vec_stack (int count)
 		      printf ("proc name = %s, offset = %lx\n",
 			      proc_name_buffer, offset);
 		    }
+		  else if (ret == -UNW_ENOINFO)
+		    {
+		      /* Some startup frames (e.g. in glibc) lack unwind info
+			 for the procedure name.  Not a test failure.  */
+		      printf ("proc name = <unknown>\n");
+		    }
 		  else
 		    {
 		      panic ("unw_get_proc_name returned %d\n", ret);
@@ -116,6 +151,7 @@ vec_stack (int count)
 	    }
 	  while (ret > 0);
 	}
+      return vec_init ();
     }
 
   v1 = vec_init ();

@@ -47,7 +47,7 @@ enum ia64_script_insn_opcode
   };
 
 #if defined(HAVE___CACHE_PER_THREAD) && HAVE___CACHE_PER_THREAD
-static _Thread_local struct ia64_script_cache ia64_per_thread_cache =
+static thread_local struct ia64_script_cache ia64_per_thread_cache =
   {
     .busy = ATOMIC_FLAG_INIT
   };
@@ -287,7 +287,7 @@ compile_reg (struct ia64_state_record *sr, int i, struct ia64_reg_info *r,
         {
         case IA64_WHERE_FR:
           /* Note: There is no need to handle NaT-bit info here
-             (indepent of is_preserved_gr), because for floating-point
+             (independent of is_preserved_gr), because for floating-point
              NaTs are represented as NaTVal, so the NaT-info never
              needs to be consulated.  */
           if (rval >= 2 && rval <= 5)

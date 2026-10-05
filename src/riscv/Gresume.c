@@ -30,9 +30,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #ifndef UNW_REMOTE_ONLY
 
 HIDDEN inline int
-riscv_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
+riscv_local_resume (unw_addr_space_t as UNUSED, unw_cursor_t *cursor, void *arg UNUSED)
 {
-#ifdef __linux__
   struct cursor *c = (struct cursor *) cursor;
   ucontext_t *uc = c->uc;
 
@@ -69,9 +68,7 @@ riscv_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
     }
 
   unreachable();
-#else
-# warning Implement me
-#endif
+
   return -UNW_EINVAL;
 }
 

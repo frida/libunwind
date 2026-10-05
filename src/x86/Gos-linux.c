@@ -73,55 +73,55 @@ HIDDEN int
 x86_handle_signal_frame (unw_cursor_t *cursor)
 {
   struct cursor *c = (struct cursor *) cursor;
-  int ret;
+  int i, ret;
 
-  /* c->esp points at the arguments to the handler.  Without
+  /* The CFA points at the arguments to the handler.  Without
      SA_SIGINFO, the arguments consist of a signal number
      followed by a struct sigcontext.  With SA_SIGINFO, the
      arguments consist a signal number, a siginfo *, and a
-     ucontext *. */
-  unw_word_t sc_addr;
-  unw_word_t siginfo_ptr_addr = c->dwarf.cfa + 4;
-  unw_word_t sigcontext_ptr_addr = c->dwarf.cfa + 8;
-  unw_word_t siginfo_ptr, sigcontext_ptr;
-  struct dwarf_loc esp_loc, siginfo_ptr_loc, sigcontext_ptr_loc;
+     ucontext *.  unw_is_signal_frame() matched the trampoline,
+     and only the one without SA_SIGINFO starts with pop %eax. */
+  unw_word_t sc_addr, insn, sigcontext_ptr;
+  struct dwarf_loc esp_loc;
 
-  siginfo_ptr_loc = DWARF_LOC (siginfo_ptr_addr, 0);
-  sigcontext_ptr_loc = DWARF_LOC (sigcontext_ptr_addr, 0);
-  ret = (dwarf_get (&c->dwarf, siginfo_ptr_loc, &siginfo_ptr)
-         | dwarf_get (&c->dwarf, sigcontext_ptr_loc, &sigcontext_ptr));
-  if (ret < 0)
+  if ((ret = dwarf_get (&c->dwarf, DWARF_LOC (c->dwarf.ip, 0), &insn)) < 0)
     {
-      Debug (2, "returning 0\n");
-      return 0;
+      Debug (2, "returning %d\n", ret);
+      return ret;
     }
-  if (siginfo_ptr < c->dwarf.cfa
-      || siginfo_ptr > c->dwarf.cfa + 256
-      || sigcontext_ptr < c->dwarf.cfa
-      || sigcontext_ptr > c->dwarf.cfa + 256)
+  if ((insn & 0xff) == 0x58)
     {
-      /* Not plausible for SA_SIGINFO signal */
       c->sigcontext_format = X86_SCF_LINUX_SIGFRAME;
       c->sigcontext_addr = sc_addr = c->dwarf.cfa + 4;
+      /* The trampoline pops the signal number before calling sigreturn. */
+      c->sigcontext_sp = c->dwarf.cfa + 4;
+      c->sigreturn_nr = SYS_sigreturn;
     }
   else
     {
-      /* If SA_SIGINFO were not specified, we actually read
-         various segment pointers instead.  We believe that at
-         least fs and _fsh are always zero for linux, so it is
-         not just unlikely, but impossible that we would end
-         up here. */
+      ret = dwarf_get (&c->dwarf, DWARF_LOC (c->dwarf.cfa + 8, 0),
+                       &sigcontext_ptr);
+      if (ret < 0)
+        {
+          Debug (2, "returning %d\n", ret);
+          return ret;
+        }
       c->sigcontext_format = X86_SCF_LINUX_RT_SIGFRAME;
       c->sigcontext_addr = sigcontext_ptr;
       sc_addr = sigcontext_ptr + LINUX_UC_MCONTEXT_OFF;
+      c->sigcontext_sp = c->dwarf.cfa;
+      c->sigreturn_nr = SYS_rt_sigreturn;
     }
   esp_loc = DWARF_LOC (sc_addr + LINUX_SC_ESP_OFF, 0);
   ret = dwarf_get (&c->dwarf, esp_loc, &c->dwarf.cfa);
   if (ret < 0)
     {
-      Debug (2, "returning 0\n");
-      return 0;
+      Debug (2, "returning %d\n", ret);
+      return ret;
     }
+
+  for (i = 0; i < DWARF_NUM_PRESERVED_REGS; ++i)
+    c->dwarf.loc[i] = DWARF_NULL_LOC;
 
   c->dwarf.loc[EAX] = DWARF_LOC (sc_addr + LINUX_SC_EAX_OFF, 0);
   c->dwarf.loc[ECX] = DWARF_LOC (sc_addr + LINUX_SC_ECX_OFF, 0);
@@ -130,11 +130,10 @@ x86_handle_signal_frame (unw_cursor_t *cursor)
   c->dwarf.loc[EBP] = DWARF_LOC (sc_addr + LINUX_SC_EBP_OFF, 0);
   c->dwarf.loc[ESI] = DWARF_LOC (sc_addr + LINUX_SC_ESI_OFF, 0);
   c->dwarf.loc[EDI] = DWARF_LOC (sc_addr + LINUX_SC_EDI_OFF, 0);
-  c->dwarf.loc[EFLAGS] = DWARF_NULL_LOC;
-  c->dwarf.loc[TRAPNO] = DWARF_NULL_LOC;
-  c->dwarf.loc[ST0] = DWARF_NULL_LOC;
   c->dwarf.loc[EIP] = DWARF_LOC (sc_addr + LINUX_SC_EIP_OFF, 0);
   c->dwarf.loc[ESP] = DWARF_LOC (sc_addr + LINUX_SC_ESP_OFF, 0);
+
+  c->dwarf.use_prev_instr = 0;
 
   return 0;
 }
@@ -282,54 +281,45 @@ x86_r_uc_addr (ucontext_t *uc, int reg)
 }
 
 HIDDEN int
-x86_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
+x86_local_resume (unw_addr_space_t as UNUSED, unw_cursor_t *cursor, void *arg UNUSED)
 {
   struct cursor *c = (struct cursor *) cursor;
   ucontext_t *uc = c->uc;
 
-  /* Ensure c->pi is up-to-date.  On x86, it's relatively common to be
-     missing DWARF unwind info.  We don't want to fail in that case,
-     because the frame-chain still would let us do a backtrace at
-     least.  */
-  dwarf_make_proc_info (&c->dwarf);
-
-  if (unlikely (c->sigcontext_format != X86_SCF_NONE))
+  if (c->sigcontext_addr)
     {
+      /* A signal frame was stepped through on the way to this frame.
+         Resume through sigreturn, so that the signal mask and alternate
+         signal stack are restored along with the registers, as on
+         x86_64. */
       struct sigcontext *sc = (struct sigcontext *) c->sigcontext_addr;
+      unw_word_t sp = c->sigcontext_sp;
+      unw_word_t nr = c->sigreturn_nr;
+
+      if (nr == SYS_rt_sigreturn)
+        sc = (struct sigcontext *) &((ucontext_t *) sc)->uc_mcontext;
+      sc->edi = uc->uc_mcontext.gregs[REG_EDI];
+      sc->esi = uc->uc_mcontext.gregs[REG_ESI];
+      sc->ebp = uc->uc_mcontext.gregs[REG_EBP];
+      sc->esp = uc->uc_mcontext.gregs[REG_ESP];
+      sc->ebx = uc->uc_mcontext.gregs[REG_EBX];
+      sc->edx = uc->uc_mcontext.gregs[REG_EDX];
+      sc->ecx = uc->uc_mcontext.gregs[REG_ECX];
+      sc->eax = uc->uc_mcontext.gregs[REG_EAX];
+      sc->eip = uc->uc_mcontext.gregs[REG_EIP];
 
       Debug (8, "resuming at ip=%x via sigreturn(%p)\n", c->dwarf.ip, sc);
-#if !defined(__ANDROID__)
-      x86_sigreturn (sc);
-#endif
+      __asm__ __volatile__ ("mov %0, %%esp\n"
+                            "int $0x80\n"
+                            : : "r" (sp), "a" (nr) : "memory");
+      abort ();
     }
-  else
-    {
-      Debug (8, "resuming at ip=%x via setcontext()\n", c->dwarf.ip);
+
+  Debug (8, "resuming at ip=%x via setcontext()\n", c->dwarf.ip);
 #if !defined(__ANDROID__)
-      setcontext (uc);
+  _Ux86_setcontext (uc);
 #endif
-    }
   return -UNW_EINVAL;
 }
 
-/* sigreturn() is a no-op on x86 glibc.  */
-HIDDEN void
-x86_sigreturn (unw_cursor_t *cursor)
-{
-  struct cursor *c = (struct cursor *) cursor;
-  struct sigcontext *sc = (struct sigcontext *) c->sigcontext_addr;
-  mcontext_t *sc_mcontext = &((ucontext_t*)sc)->uc_mcontext;
-  /* Copy in saved uc - all preserved regs are at the start of sigcontext */
-  memcpy(sc_mcontext, &c->uc->uc_mcontext,
-         DWARF_NUM_PRESERVED_REGS * sizeof(unw_word_t));
-
-  Debug (8, "resuming at ip=%llx via sigreturn(%p)\n",
-             (unsigned long long) c->dwarf.ip, sc);
-  __asm__ __volatile__ ("mov %0, %%esp;"
-                        "mov %1, %%eax;"
-                        "syscall"
-                        :: "r"(sc), "i"(SYS_rt_sigreturn)
-                        : "memory");
-  abort();
-}
 #endif

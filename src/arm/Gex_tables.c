@@ -68,7 +68,7 @@ prel31_to_addr (unw_addr_space_t as, void *arg, unw_word_t prel31,
   if ((*as->acc.access_mem)(as, prel31, &offset, 0, arg) < 0)
     return -UNW_EINVAL;
 
-  offset = ((long)offset << 1) >> 1;
+  offset = (unw_word_t)((int32_t)(offset << 1) >> 1);
   *val = prel31 + offset;
 
   return 0;
@@ -119,10 +119,12 @@ arm_exidx_apply_cmd (struct arm_exbuf_data *edata, struct dwarf_cursor *c)
       dwarf_get (c, c->loc[UNW_ARM_R13], &c->cfa);
       break;
     case ARM_EXIDX_CMD_VFP_POP:
-      /* Skip VFP registers, but be sure to adjust stack */
       for (i = ARM_EXBUF_START (edata->data); i <= ARM_EXBUF_END (edata->data);
            i++)
+      {
+        c->loc[UNW_ARM_S0 + i] = DWARF_LOC (c->cfa, 0);
         c->cfa += 8;
+      }
       if (!(edata->data & ARM_EXIDX_VFP_DOUBLE))
         c->cfa += 4;
       break;
@@ -149,7 +151,7 @@ arm_exidx_apply_cmd (struct arm_exbuf_data *edata, struct dwarf_cursor *c)
  * arm_exidx_apply_cmd that applies the command onto the dwarf_cursor.
  */
 HIDDEN int
-arm_exidx_decode (const uint8_t *buf, uint8_t len, struct dwarf_cursor *c)
+arm_exidx_decode (const uint8_t *buf, int len, struct dwarf_cursor *c)
 {
 #define READ_OP() *buf++
   assert(buf != NULL);
@@ -315,9 +317,9 @@ arm_exidx_extract (struct dwarf_cursor *c, uint8_t *buf)
     {
       Debug (2, "%p compact model %d [%8.8x]\n", (void *)addr,
              (data >> 24) & 0x7f, data);
-      buf[nbuf++] = data >> 16;
-      buf[nbuf++] = data >> 8;
-      buf[nbuf++] = data;
+      buf[nbuf++] = (uint8_t) (data >> 16);
+      buf[nbuf++] = (uint8_t) (data >> 8);
+      buf[nbuf++] = (uint8_t) data;
     }
   else
     {
@@ -340,9 +342,11 @@ arm_exidx_extract (struct dwarf_cursor *c, uint8_t *buf)
               extbl_data += 4;
             }
           else
-            buf[nbuf++] = data >> 16;
-          buf[nbuf++] = data >> 8;
-          buf[nbuf++] = data;
+            {
+              buf[nbuf++] = (uint8_t) (data >> 16);
+            }
+          buf[nbuf++] = (uint8_t) (data >> 8);
+          buf[nbuf++] = (uint8_t) data;
         }
       else
         {
@@ -355,9 +359,9 @@ arm_exidx_extract (struct dwarf_cursor *c, uint8_t *buf)
                                        c->as_arg) < 0)
             return -UNW_EINVAL;
           n_table_words = data >> 24;
-          buf[nbuf++] = data >> 16;
-          buf[nbuf++] = data >> 8;
-          buf[nbuf++] = data;
+          buf[nbuf++] = (uint8_t) (data >> 16);
+          buf[nbuf++] = (uint8_t) (data >> 8);
+          buf[nbuf++] = (uint8_t) data;
           extbl_data += 8;
         }
       assert (n_table_words <= 5);
@@ -368,10 +372,10 @@ arm_exidx_extract (struct dwarf_cursor *c, uint8_t *buf)
                                        c->as_arg) < 0)
             return -UNW_EINVAL;
           extbl_data += 4;
-          buf[nbuf++] = data >> 24;
-          buf[nbuf++] = data >> 16;
-          buf[nbuf++] = data >> 8;
-          buf[nbuf++] = data >> 0;
+          buf[nbuf++] = (uint8_t) (data >> 24);
+          buf[nbuf++] = (uint8_t) (data >> 16);
+          buf[nbuf++] = (uint8_t) (data >> 8);
+          buf[nbuf++] = (uint8_t) data;
         }
     }
 
@@ -441,6 +445,46 @@ arm_search_unwind_table (unw_addr_space_t as, unw_word_t ip,
       pi->unwind_info = (void *) entry;
       pi->format = UNW_INFO_FORMAT_ARM_EXIDX;
     }
+
+  /* Extract personality function and LSDA from the ARM exception tables.
+     For non-compact extab entries the first extab word is a prel31 offset
+     to the personality function; pr_cache.ehtp must point to that word.
+     Set pi->lsda to the extab base so _Unwind_RaiseException can assign
+     ucb->pr_cache.ehtp = pi->lsda before each personality call.
+     Compact model entries (ARM_EXIDX_COMPACT set in the extab word) have
+     inline opcodes only; compact model 2 (__aeabi_unwind_cpp_pr2) can carry
+     LSDA but is not handled here.  */
+  {
+    unw_word_t data;
+    if ((*as->acc.access_mem)(as, entry + 4, &data, 0, arg) == 0)
+      {
+        if (data == ARM_EXIDX_CANT_UNWIND)
+          {
+            /* Nothing to do.  */
+          }
+        else if (!(data & ARM_EXIDX_COMPACT))
+          {
+            /* Pointer to .ARM.extab entry.  */
+            unw_word_t extbl_data;
+            if (prel31_to_addr (as, arg, entry + 4, &extbl_data) == 0)
+              {
+                unw_word_t extbl_word0;
+                if ((*as->acc.access_mem)(as, extbl_data, &extbl_word0,
+                                          0, arg) == 0
+                    && !(extbl_word0 & ARM_EXIDX_COMPACT))
+                  {
+                    /* Non-compact: word 0 is prel31 to personality.  */
+                    unw_word_t pers;
+                    if (prel31_to_addr (as, arg, extbl_data, &pers) == 0)
+                      pi->handler = pers;
+                    /* lsda = base of extab entry (for pr_cache.ehtp).  */
+                    pi->lsda = extbl_data;
+                  }
+              }
+          }
+      }
+  }
+
   return 0;
 }
 
@@ -518,6 +562,38 @@ arm_find_proc_info2 (unw_addr_space_t as, unw_word_t ip,
   if (UNW_TRY_METHOD (UNW_ARM_METHOD_DWARF) && (methods & UNW_ARM_METHOD_DWARF))
     ret = dwarf_find_proc_info (as, ip, pi, need_unwind_info, arg);
 
+  /* DWARF .debug_frame tables have no personality/LSDA info.  If DWARF
+     succeeded but yielded no handler, also probe ARM exidx to pick up the
+     personality function and lsda so that C++ exception handling works.
+     This requires a second dl_iterate_phdr pass; the extra cost is paid only
+     by DWARF-unwound frames in binaries that also carry .ARM.exidx.  */
+  if (ret >= 0 && pi->handler == 0
+      && UNW_TRY_METHOD (UNW_ARM_METHOD_EXIDX)
+      && (methods & UNW_ARM_METHOD_EXIDX))
+    {
+      struct arm_cb_data cb_data;
+      memset (&cb_data, 0, sizeof (cb_data));
+      cb_data.ip = ip;
+      cb_data.pi = pi;
+      cb_data.di.format = -1;
+      intrmask_t saved_mask2;
+      SIGPROCMASK (SIG_SETMASK, &unwi_full_mask, &saved_mask2);
+      as->iterate_phdr_function (arm_phdr_cb, &cb_data);
+      SIGPROCMASK (SIG_SETMASK, &saved_mask2, NULL);
+      if (cb_data.di.format != -1)
+        {
+          unw_proc_info_t exidx_pi;
+          memset (&exidx_pi, 0, sizeof (exidx_pi));
+          if (arm_search_unwind_table (as, ip, &cb_data.di, &exidx_pi,
+                                       need_unwind_info, arg) == 0
+              && exidx_pi.handler != 0)
+            {
+              pi->handler = exidx_pi.handler;
+              pi->lsda    = exidx_pi.lsda;
+            }
+        }
+    }
+
   if (ret < 0 && UNW_TRY_METHOD (UNW_ARM_METHOD_EXIDX) &&
       (methods & UNW_ARM_METHOD_EXIDX))
     {
@@ -529,7 +605,7 @@ arm_find_proc_info2 (unw_addr_space_t as, unw_word_t ip,
       cb_data.di.format = -1;
 
       SIGPROCMASK (SIG_SETMASK, &unwi_full_mask, &saved_mask);
-      ret = dl_iterate_phdr (arm_phdr_cb, &cb_data);
+      ret = as->iterate_phdr_function (arm_phdr_cb, &cb_data);
       SIGPROCMASK (SIG_SETMASK, &saved_mask, NULL);
 
       if (cb_data.di.format != -1)

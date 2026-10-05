@@ -42,6 +42,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 struct unw_addr_space
   {
     struct unw_accessors acc;
+#ifndef UNW_REMOTE_ONLY
+    unw_iterate_phdr_func_t iterate_phdr_function;
+#endif
     unw_caching_policy_t caching_policy;
     _Atomic uint32_t cache_generation;
     unw_word_t dyn_generation;          /* see dyn-common.h */
@@ -50,7 +53,7 @@ struct unw_addr_space
     struct unw_debug_frame_list *debug_frames;
    };
 
-struct cursor
+struct MAY_ALIAS cursor
   {
     struct dwarf_cursor dwarf;          /* must be first */
 
@@ -120,17 +123,17 @@ dwarf_getfp (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t *val)
     return -UNW_EBADREG;
 
   if (DWARF_IS_FP_LOC (loc))
-    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_LOC (loc), val,
+    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_REG_LOC (loc), val,
                                        0, c->as_arg);
   /* FPRs may be saved in GPRs */
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_reg) (c->as, DWARF_GET_LOC (loc), (unw_word_t*)val,
+    return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc), (unw_word_t*)val,
                                      0, c->as_arg);
   if (DWARF_IS_MEM_LOC (loc))
-    return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc), (unw_word_t*)val,
+    return (*c->as->acc.access_mem) (c->as, DWARF_GET_MEM_LOC (loc), (unw_word_t*)val,
                                      0, c->as_arg);
   assert(DWARF_IS_VAL_LOC (loc));
-  *val = *(unw_fpreg_t*) DWARF_GET_LOC (loc);
+  *val = *(unw_fpreg_t*) DWARF_GET_MEM_LOC (loc);
   return 0;
 }
 
@@ -144,15 +147,15 @@ dwarf_putfp (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t val)
     return -UNW_EBADREG;
 
   if (DWARF_IS_FP_LOC (loc))
-    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_LOC (loc), &val,
+    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_REG_LOC (loc), &val,
                                        1, c->as_arg);
   /* FPRs may be saved in GPRs */
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_reg) (c->as, DWARF_GET_LOC (loc), (unw_word_t*) &val,
+    return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc), (unw_word_t*) &val,
                                      1, c->as_arg);
 
   assert(DWARF_IS_MEM_LOC (loc));
-  return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc), (unw_word_t*) &val,
+  return (*c->as->acc.access_mem) (c->as, DWARF_GET_MEM_LOC (loc), (unw_word_t*) &val,
                                    1, c->as_arg);
 }
 
@@ -166,13 +169,13 @@ dwarf_get (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t *val)
 
   /* GPRs may be saved in FPRs */
   if (DWARF_IS_FP_LOC (loc))
-    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_LOC (loc), (unw_fpreg_t*)val,
+    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_REG_LOC (loc), (unw_fpreg_t*)val,
                                        0, c->as_arg);
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_reg) (c->as, DWARF_GET_LOC (loc), val,
+    return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc), val,
                                      0, c->as_arg);
   if (DWARF_IS_MEM_LOC (loc))
-    return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc), val,
+    return (*c->as->acc.access_mem) (c->as, DWARF_GET_MEM_LOC (loc), val,
                                      0, c->as_arg);
   assert(DWARF_IS_VAL_LOC (loc));
   *val = DWARF_GET_LOC (loc);
@@ -190,20 +193,19 @@ dwarf_put (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t val)
 
   /* GPRs may be saved in FPRs */
   if (DWARF_IS_FP_LOC (loc))
-    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_LOC (loc), (unw_fpreg_t*) &val,
+    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_REG_LOC (loc), (unw_fpreg_t*) &val,
                                        1, c->as_arg);
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_reg) (c->as, DWARF_GET_LOC (loc), &val,
+    return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc), &val,
                                      1, c->as_arg);
 
   assert(DWARF_IS_MEM_LOC (loc));
-  return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc), &val,
+  return (*c->as->acc.access_mem) (c->as, DWARF_GET_MEM_LOC (loc), &val,
                                    1, c->as_arg);
 }
 
 #define tdep_getcontext_trace           unw_getcontext
 #define tdep_init_done                  UNW_OBJ(init_done)
-#define tdep_init_mem_validate          UNW_OBJ(init_mem_validate)
 #define tdep_init                       UNW_OBJ(init)
 /* Platforms that support UNW_INFO_FORMAT_TABLE need to define
    tdep_search_unwind_table.  */
@@ -242,14 +244,14 @@ dwarf_put (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t val)
 extern atomic_bool tdep_init_done;
 
 extern void tdep_init (void);
-extern void tdep_init_mem_validate (void);
 extern int tdep_search_unwind_table (unw_addr_space_t as, unw_word_t ip,
                                      unw_dyn_info_t *di, unw_proc_info_t *pi,
                                      int need_unwind_info, void *arg);
 extern void *tdep_uc_addr (unw_tdep_context_t *uc, int reg);
-extern int tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
+extern int tdep_get_elf_image (unw_addr_space_t as, struct elf_image *ei, pid_t pid, unw_word_t ip,
                                unsigned long *segbase, unsigned long *mapoff,
-                               char *path, size_t pathlen);
+                               char *path, size_t pathlen,
+                               void *arg);
 extern void tdep_get_exe_image_path (char *path);
 extern int tdep_access_reg (struct cursor *c, unw_regnum_t reg,
                             unw_word_t *valp, int write);

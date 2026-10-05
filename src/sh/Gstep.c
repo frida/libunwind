@@ -31,7 +31,7 @@ static int
 sh_handle_signal_frame (unw_cursor_t *cursor)
 {
   struct cursor *c = (struct cursor *) cursor;
-  int ret;
+  int i, ret;
   unw_word_t sc_addr, sp, sp_addr = c->dwarf.cfa;
   struct dwarf_loc sp_loc = DWARF_LOC (sp_addr, 0);
 
@@ -63,6 +63,9 @@ sh_handle_signal_frame (unw_cursor_t *cursor)
 
   c->sigcontext_addr = sc_addr;
 
+  for (i = 0; i < DWARF_NUM_PRESERVED_REGS; ++i)
+    c->dwarf.loc[i] = DWARF_NULL_LOC;
+
   /* Update the dwarf cursor.
      Set the location of the registers to the corresponding addresses of the
      uc_mcontext / sigcontext structure contents.  */
@@ -86,10 +89,13 @@ sh_handle_signal_frame (unw_cursor_t *cursor)
   c->dwarf.loc[UNW_SH_PC]  = DWARF_LOC (sc_addr + LINUX_SC_PC_OFF, 0);
 
   /* Set SP/CFA and PC/IP.  */
-  dwarf_get (&c->dwarf, c->dwarf.loc[UNW_SH_R15], &c->dwarf.cfa);
-  dwarf_get (&c->dwarf, c->dwarf.loc[UNW_SH_PC], &c->dwarf.ip);
+  if ((ret = dwarf_get (&c->dwarf, c->dwarf.loc[UNW_SH_R15], &c->dwarf.cfa)) < 0)
+    return ret;
+  if ((ret = dwarf_get (&c->dwarf, c->dwarf.loc[UNW_SH_PC], &c->dwarf.ip)) < 0)
+    return ret;
 
   c->dwarf.pi_valid = 0;
+  c->dwarf.use_prev_instr = 0;
 
   return 1;
 }
@@ -105,6 +111,7 @@ unw_step (unw_cursor_t *cursor)
   if (unw_is_signal_frame (cursor) > 0)
     return sh_handle_signal_frame (cursor);
 
+  c->sigcontext_format = SH_SCF_NONE;
   ret = dwarf_step (&c->dwarf);
 
   if (unlikely (ret == -UNW_ESTOPUNWIND))

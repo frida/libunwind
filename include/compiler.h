@@ -31,6 +31,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #define COMPILER_H
 
 #ifdef __GNUC__
+#ifndef __has_attribute
+#  define __has_attribute(x) (0)
+#endif
 # define CONST_ATTR     __attribute__((__const__))
 # define UNUSED         __attribute__((unused))
 # define NOINLINE       __attribute__((noinline))
@@ -40,11 +43,26 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 # if (__GNUC__ > 3) || (__GNUC__ == 3 && __GNUC_MINOR__ > 2)
 #  define ALWAYS_INLINE inline __attribute__((always_inline))
 #  define HIDDEN        __attribute__((visibility ("hidden")))
+#  define MAY_ALIAS     __attribute__((may_alias))
+#  if __has_attribute(fallthrough)
+#    define FALLTHROUGH __attribute__((fallthrough))
+#  else
+#    define FALLTHROUGH
+#  endif
 # else
 #  define ALWAYS_INLINE
 #  define HIDDEN
+#  define FALLTHROUGH
+#  define MAY_ALIAS
 # endif
 # define WEAK           __attribute__((weak))
+# if defined(__clang__)
+#  define NO_SANITIZE_NULL __attribute__((no_sanitize("null")))
+# else
+/* GCC ignores no_sanitize("null"); use "undefined" to suppress all UBSan checks
+ * in functions that intentionally dereference null pointers. */
+#  define NO_SANITIZE_NULL __attribute__((no_sanitize("undefined")))
+# endif
 # if (__GNUC__ >= 3)
 #  define likely(x)     __builtin_expect ((x), 1)
 #  define unlikely(x)   __builtin_expect ((x), 0)
@@ -60,9 +78,21 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 # define NORETURN
 # define ALIAS(name)
 # define HIDDEN
+# define FALLTHROUGH
+# define MAY_ALIAS
 # define WEAK
+# define NO_SANITIZE_NULL
 # define likely(x)      (x)
 # define unlikely(x)    (x)
+#endif
+
+/* True when compiled with AddressSanitizer.  Both GCC and Clang define
+   __SANITIZE_ADDRESS__; Clang also supports __has_feature(address_sanitizer)
+   but the macro is sufficient for our purposes. */
+#if defined(__SANITIZE_ADDRESS__)
+# define RUNNING_WITH_ASAN 1
+#else
+# define RUNNING_WITH_ASAN 0
 #endif
 
 #define ARRAY_SIZE(a)   (sizeof (a) / sizeof ((a)[0]))

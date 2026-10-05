@@ -31,23 +31,26 @@ HIDDEN atomic_bool tdep_init_done = 0;
 /* Unwinding methods to use. See UNW_METHOD_ enums */
 #if defined(__ANDROID__)
 /* Android only supports three types of unwinding methods. */
-HIDDEN int unwi_unwind_method = UNW_ARM_METHOD_DWARF | UNW_ARM_METHOD_EXIDX | UNW_ARM_METHOD_LR;
+int unwi_unwind_method = UNW_ARM_METHOD_DWARF | UNW_ARM_METHOD_EXIDX | UNW_ARM_METHOD_LR;
 #else
-HIDDEN int unwi_unwind_method = UNW_ARM_METHOD_ALL;
+int unwi_unwind_method = UNW_ARM_METHOD_ALL;
 #endif
 
 HIDDEN void
 tdep_init (void)
 {
   intrmask_t saved_mask;
+  intrmask_t full_mask;
+  sigfillset (&full_mask);
 
-  sigfillset (&unwi_full_mask);
-
-  lock_acquire (&arm_lock, saved_mask);
+  SIGPROCMASK (SIG_SETMASK, &full_mask, &saved_mask);
+  mutex_lock (&arm_lock);
   {
     if (atomic_load(&tdep_init_done))
       /* another thread else beat us to it... */
       goto out;
+
+    sigfillset (&unwi_full_mask);
 
     /* read ARM unwind method setting */
     const char* str = getenv ("UNW_ARM_UNWIND_METHOD");
@@ -66,5 +69,6 @@ tdep_init (void)
     atomic_store(&tdep_init_done, 1); /* signal that we're initialized... */
   }
  out:
-  lock_release (&arm_lock, saved_mask);
+  mutex_unlock (&arm_lock);
+  SIGPROCMASK (SIG_SETMASK, &saved_mask, NULL);
 }

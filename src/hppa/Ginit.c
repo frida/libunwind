@@ -47,8 +47,18 @@ uc_addr (ucontext_t *uc, int reg)
 
   if ((unsigned) (reg - UNW_HPPA_GR) < 32)
     addr = &uc->uc_mcontext.sc_gr[reg - UNW_HPPA_GR];
-  else if ((unsigned) (reg - UNW_HPPA_FR) < 32)
-    addr = &uc->uc_mcontext.sc_fr[reg - UNW_HPPA_FR];
+#ifdef __LP64__
+  else if ((unsigned) (reg - UNW_HPPA_FR) < 28)
+    addr = &uc->uc_mcontext.sc_fr[reg + 4 - UNW_HPPA_FR];
+#else
+  else if ((unsigned) (reg - UNW_HPPA_FR) < 56)
+    {
+      unsigned long int *p = (unsigned long int *)&uc->uc_mcontext.sc_fr[4];
+      addr = &p[reg - UNW_HPPA_FR];
+    }
+#endif
+  else if (reg == UNW_HPPA_IP)
+    addr = &uc->uc_mcontext.sc_iaoq[0];
   else
     addr = NULL;
   return addr;
@@ -56,7 +66,7 @@ uc_addr (ucontext_t *uc, int reg)
 
 # ifdef UNW_LOCAL_ONLY
 
-void *
+HIDDEN void *
 _Uhppa_uc_addr (ucontext_t *uc, int reg)
 {
   return uc_addr (uc, reg);
@@ -91,11 +101,18 @@ access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write,
   if (write)
     {
       Debug (12, "mem[%x] <- %x\n", addr, *val);
-      *(unw_word_t *) addr = *val;
+      memcpy ((void *) addr, val, sizeof(unw_word_t));
     }
   else
     {
-      *val = *(unw_word_t *) addr;
+      const struct cursor *c = (const struct cursor *) arg;
+      if (likely (c != NULL) && unlikely (c->validate)
+          && unlikely (!unw_address_is_valid (addr, sizeof (unw_word_t))))
+        {
+          Debug (12, "mem[%x] -> invalid\n", addr);
+          return -1;
+        }
+      memcpy (val, (void *) addr, sizeof(unw_word_t));
       Debug (12, "mem[%x] -> %x\n", addr, *val);
     }
   return 0;
@@ -106,7 +123,7 @@ access_reg (unw_addr_space_t as, unw_regnum_t reg, unw_word_t *val, int write,
             void *arg)
 {
   unw_word_t *addr;
-  ucontext_t *uc = arg;
+  ucontext_t *uc = ((struct cursor *) arg)->uc;
 
   if ((unsigned int) (reg - UNW_HPPA_FR) < 32)
     goto badreg;
@@ -117,12 +134,16 @@ access_reg (unw_addr_space_t as, unw_regnum_t reg, unw_word_t *val, int write,
 
   if (write)
     {
-      *(unw_word_t *) addr = *val;
-      Debug (12, "%s <- %x\n", unw_regname (reg), *val);
+      unw_word_t wval = *val;
+      /* HPPA IAOQ encodes privilege level in the low 2 bits (3 = user mode). */
+      if (reg == UNW_HPPA_IP)
+        wval |= 3;
+      memcpy ((void *) addr, &wval, sizeof(unw_word_t));
+      Debug (12, "%s <- %x\n", unw_regname (reg), wval);
     }
   else
     {
-      *val = *(unw_word_t *) addr;
+      memcpy (val, (void *) addr, sizeof(unw_word_t));
       Debug (12, "%s -> %x\n", unw_regname (reg), *val);
     }
   return 0;
@@ -136,7 +157,7 @@ static int
 access_fpreg (unw_addr_space_t as, unw_regnum_t reg, unw_fpreg_t *val,
               int write, void *arg)
 {
-  ucontext_t *uc = arg;
+  ucontext_t *uc = ((struct cursor *) arg)->uc;
   unw_fpreg_t *addr;
 
   if ((unsigned) (reg - UNW_HPPA_FR) > 32)
@@ -171,13 +192,26 @@ get_static_proc_name (unw_addr_space_t as, unw_word_t ip,
                       char *buf, size_t buf_len, unw_word_t *offp,
                       void *arg)
 {
-  return _Uelf32_get_proc_name (as, getpid (), ip, buf, buf_len, offp);
+  return _Uelf32_get_proc_name (as, getpid (), ip, buf, buf_len, offp, arg);
+}
+
+static int
+get_static_elf_filename (unw_addr_space_t as, unw_word_t ip,
+                         char *buf, size_t buf_len, unw_word_t *offp,
+                         void *arg)
+{
+  return _Uelf32_get_elf_filename (as, getpid (), ip, buf, buf_len, offp, arg);
 }
 
 HIDDEN void
 hppa_local_addr_space_init (void)
 {
   memset (&local_addr_space, 0, sizeof (local_addr_space));
+#ifndef UNW_REMOTE_ONLY
+# if defined(HAVE_DL_ITERATE_PHDR)
+  local_addr_space.iterate_phdr_function = dl_iterate_phdr;
+# endif
+#endif
   local_addr_space.caching_policy = UNWI_DEFAULT_CACHING_POLICY;
   local_addr_space.acc.find_proc_info = dwarf_find_proc_info;
   local_addr_space.acc.put_unwind_info = put_unwind_info;
@@ -187,6 +221,7 @@ hppa_local_addr_space_init (void)
   local_addr_space.acc.access_fpreg = access_fpreg;
   local_addr_space.acc.resume = hppa_local_resume;
   local_addr_space.acc.get_proc_name = get_static_proc_name;
+  local_addr_space.acc.get_elf_filename = get_static_elf_filename;
   unw_flush_cache (&local_addr_space, 0, 0);
 }
 

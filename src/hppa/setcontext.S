@@ -36,6 +36,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 	.proc
 	.callinfo
 _Uhppa_setcontext:
+	ldw (LINUX_UC_MCONTEXT_OFF+LINUX_SC_IAOQ_OFF)(%r26),%r1	/* resume PC */
 	FILL (2)		/* return-pointer */
 	FILL (3)		/* frame pointer */
 	FILL (4)		/* 2nd-ary frame pointer */
@@ -54,10 +55,12 @@ _Uhppa_setcontext:
 	FILL (17)		/* preserved register */
 	FILL (18)		/* preserved register */
 	FILL (19)		/* linkage-table register */
+	FILL (20)		/* exception-handling arg 0 */
+	FILL (21)		/* exception-handling arg 1 */
 	FILL (27)		/* global-data pointer */
 	FILL (30)		/* stack pointer */
 
-	ldo (LINUX_UC_MCONTEXT_OFF+LINUX_SC_FR_OFF)(%r26), %r29
+	ldo (LINUX_UC_MCONTEXT_OFF+LINUX_SC_FR_OFF+8*12)(%r26), %r29
 	fldds,ma 8(%r29), %fr12
 	fldds,ma 8(%r29), %fr13
 	fldds,ma 8(%r29), %fr14
@@ -69,7 +72,7 @@ _Uhppa_setcontext:
 	fldds,ma 8(%r29), %fr20
 	fldds    8(%r29), %fr21
 
-	bv,n	%r0(%rp)
+	bv,n	%r0(%r1)
 	.procend
 #ifdef __linux__
 	/* We do not need executable stack.  */

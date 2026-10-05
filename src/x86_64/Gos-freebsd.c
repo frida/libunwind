@@ -33,12 +33,63 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "unwind_i.h"
 #include "ucontext_i.h"
 
+/* The signal trampoline in the shared page carries CFI with the signal
+   frame augmentation, so dwarf_step() walks it without ever reaching the
+   byte matching in unw_is_signal_frame().  Pick the signal frame up from
+   the augmentation as well, or unw_resume() would resume a frame above the
+   signal frame with setcontext() instead of sigreturn(), leaving the signal
+   mask saved in the frame unrestored.  */
+HIDDEN void
+tdep_fetch_frame (struct dwarf_cursor *dw, unw_word_t ip UNUSED,
+                  int need_unwind_info UNUSED)
+{
+  struct cursor *c = (struct cursor *) dw;
+
+  if (dw->pi_valid
+      && dw->pi.unwind_info
+      && ((struct dwarf_cie_info *) dw->pi.unwind_info)->signal_frame)
+    {
+      c->sigcontext_format = X86_64_SCF_FREEBSD_SIGFRAME;
+      c->sigcontext_addr = dw->cfa;
+    }
+  else
+    c->sigcontext_format = X86_64_SCF_NONE;
+
+  Debug (5, "fetch frame ip=0x%lx cfa=0x%lx format=%d\n",
+         dw->ip, dw->cfa, c->sigcontext_format);
+}
+
+HIDDEN int
+tdep_cache_frame (struct dwarf_cursor *dw)
+{
+  struct cursor *c = (struct cursor *) dw;
+
+  /* The rs cache stores this as a single bit, so return a boolean rather
+     than the format, which would be truncated to 1 and come back as the
+     wrong format in tdep_reuse_frame().  */
+  return c->sigcontext_format != X86_64_SCF_NONE;
+}
+
+HIDDEN void
+tdep_reuse_frame (struct dwarf_cursor *dw, int frame)
+{
+  struct cursor *c = (struct cursor *) dw;
+
+  c->sigcontext_format = frame ? X86_64_SCF_FREEBSD_SIGFRAME
+                               : X86_64_SCF_NONE;
+  if (c->sigcontext_format == X86_64_SCF_FREEBSD_SIGFRAME)
+    c->sigcontext_addr = dw->cfa;
+
+  Debug (5, "reuse frame ip=0x%lx cfa=0x%lx format=%d\n",
+         dw->ip, dw->cfa, c->sigcontext_format);
+}
+
 int
 unw_is_signal_frame (unw_cursor_t *cursor)
 {
   /* XXXKIB */
   struct cursor *c = (struct cursor *) cursor;
-  unw_word_t w0, w1, w2, b0, ip;
+  unw_word_t w0, w1, w2, ip;
   unw_addr_space_t as;
   unw_accessors_t *a;
   void *arg;
@@ -69,22 +120,9 @@ eb fd                   jmp     0b
       w2 == 0x0000000000fdebf4)
    {
      c->sigcontext_format = X86_64_SCF_FREEBSD_SIGFRAME;
-     return (c->sigcontext_format);
+     return (1);
    }
-  /* Check if RIP points at standard syscall sequence.
-49 89 ca        mov    %rcx,%r10
-0f 05           syscall
-  */
-  if ((ret = (*a->access_mem) (as, ip - 5, &b0, 0, arg)) < 0)
-    return (0);
-  Debug (12, "b0 0x%lx\n", b0);
-  if ((b0 & 0xffffffffffffff) == 0x050fca89490000 ||
-      (b0 & 0xffffffffff) == 0x050fca8949)
-   {
-    c->sigcontext_format = X86_64_SCF_FREEBSD_SYSCALL;
-    return (c->sigcontext_format);
-   }
-  return (X86_64_SCF_NONE);
+  return (0);
 }
 
 HIDDEN int
@@ -92,7 +130,7 @@ x86_64_handle_signal_frame (unw_cursor_t *cursor)
 {
   struct cursor *c = (struct cursor *) cursor;
   unw_word_t ucontext;
-  int ret;
+  int i, ret;
 
   if (c->sigcontext_format == X86_64_SCF_FREEBSD_SIGFRAME)
    {
@@ -107,6 +145,9 @@ x86_64_handle_signal_frame (unw_cursor_t *cursor)
        Debug (2, "returning %d\n", ret);
        return ret;
      }
+
+    for (i = 0; i < DWARF_NUM_PRESERVED_REGS; ++i)
+      c->dwarf.loc[i] = DWARF_NULL_LOC;
 
     c->dwarf.loc[RAX] = DWARF_LOC (ucontext + UC_MCONTEXT_GREGS_RAX, 0);
     c->dwarf.loc[RDX] = DWARF_LOC (ucontext + UC_MCONTEXT_GREGS_RDX, 0);
@@ -127,26 +168,6 @@ x86_64_handle_signal_frame (unw_cursor_t *cursor)
     c->dwarf.loc[RIP] = DWARF_LOC (ucontext + UC_MCONTEXT_GREGS_RIP, 0);
 
     return 0;
-   }
-  else if (c->sigcontext_format == X86_64_SCF_FREEBSD_SYSCALL)
-   {
-    c->dwarf.loc[RCX] = c->dwarf.loc[R10];
-    /*  rsp_loc = DWARF_LOC(c->dwarf.cfa - 8, 0);       */
-    /*  rbp_loc = c->dwarf.loc[RBP];                    */
-    c->dwarf.loc[RSP] = DWARF_VAL_LOC (c, c->dwarf.cfa + 8);
-    c->dwarf.loc[RIP] = DWARF_LOC (c->dwarf.cfa, 0);
-    ret = dwarf_get (&c->dwarf, c->dwarf.loc[RIP], &c->dwarf.ip);
-    Debug (1, "Frame Chain [RIP=0x%Lx] = 0x%Lx\n",
-           (unsigned long long) DWARF_GET_LOC (c->dwarf.loc[RIP]),
-           (unsigned long long) c->dwarf.ip);
-    if (ret < 0)
-     {
-       Debug (2, "returning %d\n", ret);
-       return ret;
-     }
-    c->dwarf.cfa += 8;
-    c->dwarf.use_prev_instr = 1;
-    return 1;
    }
   else
     return -UNW_EBADFRAME;
@@ -217,3 +238,50 @@ x86_64_sigreturn (unw_cursor_t *cursor)
   abort();
 }
 #endif
+
+HIDDEN int
+x86_64_os_step(struct cursor *c)
+{
+  unw_word_t b0, ip;
+  unw_addr_space_t as;
+  unw_accessors_t *a;
+  void *arg;
+  int ret;
+
+  as = c->dwarf.as;
+  a = unw_get_accessors_int (as);
+  arg = c->dwarf.as_arg;
+  ip = c->dwarf.ip;
+
+  /*
+   * Check if RIP points at standard syscall sequence.
+   * 49 89 ca        mov    %rcx,%r10
+   * 0f 05           syscall
+   */
+  if ((ret = (*a->access_mem) (as, ip - 5, &b0, 0, arg)) < 0)
+    return (0);
+  Debug (12, "b0 0x%lx\n", b0);
+  if ((b0 & 0xffffffffffffff) == 0x050fca89490000 ||
+      (b0 & 0xffffffffff) == 0x050fca8949)
+   {
+    c->sigcontext_format = X86_64_SCF_FREEBSD_SYSCALL;
+    c->dwarf.loc[RCX] = c->dwarf.loc[R10];
+    /*  rsp_loc = DWARF_LOC(c->dwarf.cfa - 8, 0);       */
+    /*  rbp_loc = c->dwarf.loc[RBP];                    */
+    c->dwarf.loc[RSP] = DWARF_VAL_LOC (c, c->dwarf.cfa + 8);
+    c->dwarf.loc[RIP] = DWARF_LOC (c->dwarf.cfa, 0);
+    ret = dwarf_get (&c->dwarf, c->dwarf.loc[RIP], &c->dwarf.ip);
+    Debug (1, "Frame Chain [RIP=0x%Lx] = 0x%Lx\n",
+           (unsigned long long) DWARF_GET_LOC (c->dwarf.loc[RIP]),
+           (unsigned long long) c->dwarf.ip);
+    if (ret < 0)
+     {
+       Debug (2, "returning %d\n", ret);
+       return ret;
+     }
+    c->dwarf.cfa += 8;
+    c->dwarf.use_prev_instr = 1;
+    return 1;
+   }
+  return (0);
+}

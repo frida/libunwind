@@ -57,6 +57,10 @@ static void siglongjmp (sigjmp_buf env, int val) UNUSED;
 #endif
 #endif /* __GLIBC_PREREQ */
 
+#ifndef _JB_STK_SHIFT
+#define	_JB_STK_SHIFT	0
+#endif
+
 void
 siglongjmp (sigjmp_buf env, int val)
 {
@@ -75,11 +79,7 @@ siglongjmp (sigjmp_buf env, int val)
     {
       if (unw_get_reg (&c, UNW_REG_SP, &sp) < 0)
         abort ();
-#ifdef __FreeBSD__
-      if (sp != wp[JB_SP] + sizeof(unw_word_t))
-#else
-      if (sp != wp[JB_SP])
-#endif
+      if (sp != (wp[JB_SP] + _JB_STK_SHIFT))
         continue;
 
       if (!bsp_match (&c, wp))
@@ -90,13 +90,24 @@ siglongjmp (sigjmp_buf env, int val)
       /* default to resuming without restoring signal-mask */
       cont = &_UI_longjmp_cont;
 
+#if defined(__aarch64__) && defined(__linux__) && !defined(__GLIBC__)
+      if (unw_set_reg (&c, UNW_REG_EH + 0, wp[22]) < 0
+          || unw_set_reg (&c, UNW_REG_EH + 1, val) < 0
+          || unw_set_reg (&c, UNW_REG_EH + 19, wp[24]) < 0
+          || unw_set_reg (&c, UNW_REG_IP, (unw_word_t) (uintptr_t) cont))
+        abort ();
+#else /* !defined(__linux__) || defined(__GLIBC__) */
       /* Order of evaluation is important here: if unw_resume()
          restores signal mask, we must set it up appropriately, even
          if wp[JB_MASK_SAVED] is FALSE.  */
+# ifdef __FreeBSD__
+      if ((wp[JB_MASK_SAVED] & 0x1) == 0x1)
+# else
       if (!resume_restores_sigmask (&c, wp) && wp[JB_MASK_SAVED])
+# endif
         {
           /* sigmask was saved */
-#if defined(__linux__) || defined(__sun)
+# if defined(__linux__) || defined(__sun)
           if (UNW_NUM_EH_REGS < 4 || _NSIG > 16 * sizeof (unw_word_t))
             /* signal mask doesn't fit into EH arguments and we can't
                put it on the stack without overwriting something
@@ -107,12 +118,12 @@ siglongjmp (sigjmp_buf env, int val)
                 || (_NSIG > 8 * sizeof (unw_word_t)
                     && unw_set_reg (&c, UNW_REG_EH + 3, wp[JB_MASK + 1]) < 0))
               abort ();
-#elif defined(__FreeBSD__)
-          if (unw_set_reg (&c, UNW_REG_EH + 2, &wp[JB_MASK]) < 0)
+# elif defined(__FreeBSD__)
+          if (unw_set_reg (&c, UNW_REG_EH + 2, (unw_word_t)&wp[JB_MASK]) < 0)
               abort();
-#else
-#error Port me
-#endif
+# else
+#  error Port me
+# endif
           cont = &_UI_siglongjmp_cont;
         }
 
@@ -120,6 +131,12 @@ siglongjmp (sigjmp_buf env, int val)
           || unw_set_reg (&c, UNW_REG_EH + 1, val) < 0
           || unw_set_reg (&c, UNW_REG_IP, (unw_word_t) (uintptr_t) cont))
         abort ();
+#endif /* defined(__linux__) && !defined(__GLIBC__) */
+
+      /* siglongjmp() restores the saved mask itself, and leaves the mask
+         alone when sigsetjmp() did not save one.  */
+      install_resume_sigmask (&c, cont == &_UI_siglongjmp_cont
+                                  ? (sigset_t *) &wp[JB_MASK] : NULL);
 
       unw_resume (&c);
 

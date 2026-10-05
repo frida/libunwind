@@ -55,7 +55,7 @@ hppa_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
 {
 #if defined(__linux__)
   struct cursor *c = (struct cursor *) cursor;
-  ucontext_t *uc = c->dwarf.as_arg;
+  ucontext_t *uc = c->uc;
 
   /* Ensure c->pi is up-to-date.  On PA-RISC, it's relatively common to be
      missing DWARF unwind info.  We don't want to fail in that case,
@@ -66,13 +66,19 @@ hppa_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
   if (unlikely (c->sigcontext_format != HPPA_SCF_NONE))
     {
       struct sigcontext *sc = (struct sigcontext *) c->sigcontext_addr;
+      void *sp = (void *)c->sigcontext_sp;
 
-      Debug (8, "resuming at ip=%x via sigreturn(%p)\n", c->dwarf.ip, sc);
-      my_rt_sigreturn (sc, (sc->sc_flags & PARISC_SC_FLAG_IN_SYSCALL) != 0);
+      Debug (8, "resuming at ip=%x via sigreturn(%p)\n", c->dwarf.ip, sp);
+      my_rt_sigreturn (sp, (sc->sc_flags & PARISC_SC_FLAG_IN_SYSCALL) != 0);
     }
   else
     {
       Debug (8, "resuming at ip=%x via setcontext()\n", c->dwarf.ip);
+      /* CFA after unw_step equals the frame's body SP on HPPA's upward-growing stack. */
+      uc->uc_mcontext.sc_gr[30] = c->dwarf.cfa;
+      /* _Uhppa_getcontext doesn't save FR0 (the FPSR); a stale value
+         with cause+enable bits set would fault inside setcontext. */
+      uc->uc_mcontext.sc_fr[0] = 0;
       setcontext (uc);
     }
 #else

@@ -35,6 +35,10 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "libunwind_i.h"
 #include <ucontext.h>
 
+#if defined(__CET__)
+# include <x86gprintrin.h>
+#endif
+
 /* DWARF column numbers for x86_64: */
 #define RAX     0
 #define RDX     1
@@ -76,6 +80,28 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
   } while (0)
 #endif
 
+/* A macro to pop n shadow stack frames without creating a new frame.  */
+#if defined __CET__ && (__CET__ & 2) != 0
+# define POP_SHADOW_STACK_FRAMES(n)            \
+  do                                           \
+    {                                          \
+      unw_word_t ssp = _get_ssp ();            \
+      if (ssp != 0)                            \
+        {                                      \
+          unw_word_t tmp = (n);                \
+          while (tmp > 255)                    \
+            {                                  \
+              _inc_ssp (255);                  \
+              tmp -= 255;                      \
+            }                                  \
+          _inc_ssp (tmp);                      \
+        }                                      \
+    }                                          \
+  while (0)
+#else
+# define POP_SHADOW_STACK_FRAMES(n)
+#endif
+
 extern void x86_64_local_addr_space_init (void);
 extern int x86_64_local_resume (unw_addr_space_t as, unw_cursor_t *cursor,
                              void *arg);
@@ -89,5 +115,7 @@ extern void *x86_64_r_uc_addr (ucontext_t *uc, int reg);
 extern NORETURN void x86_64_sigreturn (unw_cursor_t *cursor);
 #define x86_64_handle_signal_frame UNW_OBJ(handle_signal_frame)
 extern int x86_64_handle_signal_frame(unw_cursor_t *cursor);
+#define x86_64_os_step UNW_OBJ(os_step)
+extern HIDDEN int x86_64_os_step(struct cursor *c);
 
 #endif /* unwind_i_h */

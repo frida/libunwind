@@ -23,7 +23,6 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
-#include "_UCD_lib.h"
 #include "_UCD_internal.h"
 
 #if UNW_TARGET_IA64 && defined(__linux__)
@@ -79,8 +78,10 @@ get_list_addr (unw_addr_space_t as, unw_word_t *dil_addr, void *arg,
        DWARF2 unwind info.  */
 
 static inline int
-get_list_addr (unw_addr_space_t as, unw_word_t *dil_addr, void *arg,
-               int *countp)
+get_list_addr (unw_addr_space_t  as UNUSED,
+               unw_word_t       *dil_addr UNUSED,
+               void             *arg UNUSED,
+               int              *countp)
 {
 # warning Implement get_list_addr(), please.
   *countp = 0;

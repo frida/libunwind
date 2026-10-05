@@ -23,10 +23,13 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
-#if UNW_TARGET_IA64
+#ifndef libunwind_setjmp_setjmp_i_h
+#define libunwind_setjmp_setjmp_i_h
 
 #include "libunwind_i.h"
-#include "tdep-ia64/rse.h"
+
+#if UNW_TARGET_IA64
+# include "tdep-ia64/rse.h"
 
 static inline int
 bsp_match (unw_cursor_t *c, unw_word_t *wp)
@@ -103,16 +106,61 @@ resume_restores_sigmask (unw_cursor_t *c, unw_word_t *wp)
 #else /* !UNW_TARGET_IA64 */
 
 static inline int
-bsp_match (unw_cursor_t *c, unw_word_t *wp)
+bsp_match (unw_cursor_t *c UNUSED, unw_word_t *wp UNUSED)
 {
   return 1;
 }
 
 static inline int
-resume_restores_sigmask (unw_cursor_t *c, unw_word_t *wp)
+resume_restores_sigmask (unw_cursor_t *c UNUSED, unw_word_t *wp  UNUSED)
 {
   /* We may want to do this analogously as for ia64... */
   return 0;
 }
 
 #endif /* !UNW_TARGET_IA64 */
+
+#if defined(UNW_TARGET_X86_64) && defined(__FreeBSD__)
+
+#include <machine/sigframe.h>
+#include <signal.h>
+#include <stddef.h>
+#include <string.h>
+
+/* unw_resume() returns through sigreturn() for every frame above a signal
+   frame, and sigreturn() installs the signal mask saved in that frame.
+   longjmp() must leave the mask alone and siglongjmp() installs the mask
+   itself, so put the mask that is to be in effect afterwards into the signal
+   frame rather than resuming with the interrupted thread's mask.  MASK is the
+   mask to install, or NULL to keep the current one.  */
+static inline void
+install_resume_sigmask (unw_cursor_t *c, sigset_t *mask)
+{
+  unw_word_t sc_addr = ((struct cursor *) c)->sigcontext_addr;
+  ucontext_t *uc;
+  sigset_t current_mask;
+
+  if (!sc_addr)
+    return;
+
+  if (!mask)
+    {
+      if (sigprocmask (SIG_BLOCK, NULL, &current_mask) < 0)
+        abort ();
+      mask = &current_mask;
+    }
+
+  uc = (ucontext_t *) (sc_addr + offsetof (struct sigframe, sf_uc));
+  memcpy (&uc->uc_sigmask, mask, sizeof (uc->uc_sigmask));
+}
+
+#else /* !(UNW_TARGET_X86_64 && __FreeBSD__) */
+
+static inline void
+install_resume_sigmask (unw_cursor_t *c UNUSED, void *mask UNUSED)
+{
+}
+
+#endif /* !(UNW_TARGET_X86_64 && __FreeBSD__) */
+
+#endif /* libunwind_setjmp_setjmp_i_h */

@@ -27,32 +27,33 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "dwarf_i.h"
 
 HIDDEN define_lock (loongarch64_lock);
-HIDDEN int tdep_init_done;
+HIDDEN atomic_bool tdep_init_done;
 
 HIDDEN void
 tdep_init (void)
 {
   intrmask_t saved_mask;
+  intrmask_t full_mask;
+  sigfillset (&full_mask);
 
-  sigfillset (&unwi_full_mask);
-
-  lock_acquire (&loongarch64_lock, saved_mask);
+  SIGPROCMASK (SIG_SETMASK, &full_mask, &saved_mask);
+  mutex_lock (&loongarch64_lock);
   {
     if (tdep_init_done)
       /* another thread else beat us to it... */
       goto out;
 
+    sigfillset (&unwi_full_mask);
     mi_init ();
 
     dwarf_init ();
 
 #ifndef UNW_REMOTE_ONLY
-    tdep_init_mem_validate ();
-
     loongarch64_local_addr_space_init ();
 #endif
     tdep_init_done = 1; /* signal that we're initialized... */
   }
  out:
-  lock_release (&loongarch64_lock, saved_mask);
+  mutex_unlock (&loongarch64_lock);
+  SIGPROCMASK (SIG_SETMASK, &saved_mask, NULL);
 }

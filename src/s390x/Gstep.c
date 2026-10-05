@@ -64,6 +64,9 @@ s390x_handle_signal_frame (unw_cursor_t *cursor)
 
   c->sigcontext_addr = sc_addr;
 
+  for (i = 0; i < DWARF_NUM_PRESERVED_REGS; ++i)
+    c->dwarf.loc[i] = DWARF_NULL_LOC;
+
   /* Update the dwarf cursor.
      Set the location of the registers to the corresponding addresses of the
      uc_mcontext / sigcontext structure contents.  */
@@ -77,8 +80,10 @@ s390x_handle_signal_frame (unw_cursor_t *cursor)
   /* Set SP/CFA and PC/IP.
      Normally the default CFA on s390x is r15+160. We do not add that offset
      here because dwarf_step will add the offset.  */
-  dwarf_get (&c->dwarf, c->dwarf.loc[UNW_S390X_R15], &c->dwarf.cfa);
-  dwarf_get (&c->dwarf, c->dwarf.loc[UNW_S390X_IP], &c->dwarf.ip);
+  if ((ret = dwarf_get (&c->dwarf, c->dwarf.loc[UNW_S390X_R15], &c->dwarf.cfa)) < 0)
+    return ret;
+  if ((ret = dwarf_get (&c->dwarf, c->dwarf.loc[UNW_S390X_IP], &c->dwarf.ip)) < 0)
+    return ret;
 
   c->dwarf.pi_valid = 0;
   c->dwarf.use_prev_instr = 0;
@@ -91,6 +96,8 @@ unw_step (unw_cursor_t *cursor)
 {
   struct cursor *c = (struct cursor *) cursor;
   int ret = 0, val = c->validate, sig;
+  unw_word_t old_ip = c->dwarf.ip;
+  unw_word_t old_cfa = c->dwarf.cfa;
 
 #if CONSERVATIVE_CHECKS
   c->validate = 1;
@@ -98,6 +105,22 @@ unw_step (unw_cursor_t *cursor)
 
   Debug (1, "(cursor=%p, ip=0x%016lx, cfa=0x%016lx)\n",
          c, c->dwarf.ip, c->dwarf.cfa);
+
+  /* Check if this is a signal frame before trying DWARF-based unwinding. The
+   * vDSO may provide DWARF info for the signal trampoline that doesn't
+   * correctly describe how to unwind through the signal frame. Checking first
+   * ensures we always use our signal frame handler which correctly parses the
+   * sigcontext.  */
+  sig = unw_is_signal_frame (cursor);
+  if (sig > 0)
+    {
+      c->sigcontext_format = sig;
+      ret = s390x_handle_signal_frame (cursor);
+#if CONSERVATIVE_CHECKS
+      c->validate = val;
+#endif
+      return ret;
+    }
 
   /* Try DWARF-based unwinding... */
   c->sigcontext_format = S390X_SCF_NONE;
@@ -109,38 +132,25 @@ unw_step (unw_cursor_t *cursor)
 
   if (unlikely (ret == -UNW_ENOINFO))
     {
-      /* GCC doesn't currently emit debug information for signal
-         trampolines on s390x so we check for them explicitly.
-
-         If there isn't debug information available we could also
+      /* If there isn't debug information available we could also
          try using the backchain (if available).
 
          Other platforms also detect PLT entries here. That's
          tricky to do reliably on s390x so I've left it out for
          now.  */
-
-      /* Memory accesses here are quite likely to be unsafe. */
-      c->validate = 1;
-
-      /* Check if this is a signal frame. */
-      sig = unw_is_signal_frame (cursor);
-      if (sig > 0)
-        {
-          c->sigcontext_format = sig;
-          ret = s390x_handle_signal_frame (cursor);
-        }
-      else
-        {
-          c->dwarf.ip = 0;
-          ret = 0;
-        }
-
-      c->validate = val;
-      return ret;
+      c->dwarf.ip = 0;
+      return 0;
     }
 
   if (unlikely (ret > 0 && c->dwarf.ip == 0))
     return 0;
+
+  if (unlikely (ret > 0 && c->dwarf.ip == old_ip && c->dwarf.cfa <= old_cfa))
+    {
+      Dprintf ("%s: ip unchanged and cfa not advancing; stopping\n",
+               __FUNCTION__);
+      return 0;
+    }
 
   return ret;
 }

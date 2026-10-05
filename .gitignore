@@ -13,8 +13,8 @@ bin
 Makefile
 Makefile.in
 
-INSTALL
 aclocal.m4
+m4/
 autom4te.cache/
 aux
 config.log
@@ -42,7 +42,9 @@ tests/[GL]test-exc
 tests/[GL]test-init
 tests/[GL]test-resume-sig
 tests/[GL]test-resume-sig-rt
+tests/[GL]test-sig-context
 tests/[GL]perf-simple
+tests/Gtest-get_proc_name
 tests/Ltest-nomalloc
 tests/Ltest-nocalloc
 tests/Lperf-simple
@@ -55,10 +57,15 @@ tests/mapper
 tests/rs-race
 tests/test-async-sig
 tests/test-coredump-unwind
+tests/test-elf32-gnu-hash
+tests/test-elf64-gnu-hash
 tests/test-flush-cache
 tests/test-init-remote
+tests/test-iterate-phdr-cache-null
+tests/test-iterate-phdr-reentry
 tests/test-mem
 tests/test-ptrace
+tests/test-runner
 tests/test-setjmp
 tests/test-strerror
 tests/test-proc-info
@@ -77,7 +84,15 @@ tests/[GL]ia64-test-readonly
 tests/[GL]ia64-test-stack
 tests/ia64-test-dyn1
 tests/ia64-test-sig
+tests/ppc64-test-altivec
+tests/ppc64-test-plt
 tests/[GL]x64-test-dwarf-expressions
 tests/x64-unwind-badjmp-signal-frame
+tests/[GL]arm64-test-sve-signal
+tests/aarch64-test-plt
+tests/[GL]aarch64-test-frame-record
+tests/[GL]aarch64-test-frame-size
+tests/aarch64-test-lr-fallback
+tests/[GL]arm-test-debug-frame-bt
 tests/*.log
 tests/*.trs

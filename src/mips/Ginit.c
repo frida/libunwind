@@ -110,7 +110,7 @@ static int
 access_reg (unw_addr_space_t as, unw_regnum_t reg, unw_word_t *val, int write,
             void *arg)
 {
-  unw_word_t *addr;
+  void *addr;
   ucontext_t *uc = arg;
 
   if (unw_is_fpreg (reg))
@@ -120,14 +120,17 @@ access_reg (unw_addr_space_t as, unw_regnum_t reg, unw_word_t *val, int write,
   if (!(addr = uc_addr (uc, reg)))
     goto badreg;
 
+  /* uc_addr() returns a pointer to a 64-bit greg_t slot, even on O32 where
+     registers are 32 bits.  Read/write the full 64-bit value with sign
+     extension so setcontext() restores the correct value.  */
   if (write)
     {
-      *(unw_word_t *) (intptr_t) addr = (mips_reg_t) *val;
+      *(unsigned long long *) addr = (long long) (mips_reg_t) *val;
       Debug (12, "%s <- %llx\n", unw_regname (reg), (long long) *val);
     }
   else
     {
-      *val = (mips_reg_t) *(unw_word_t *) (intptr_t) addr;
+      *val = (mips_reg_t) *(unsigned long long *) addr;
       Debug (12, "%s -> %llx\n", unw_regname (reg), (long long) *val);
     }
   return 0;
@@ -176,7 +179,16 @@ get_static_proc_name (unw_addr_space_t as, unw_word_t ip,
                       void *arg)
 {
 
-  return elf_w (get_proc_name) (as, getpid (), ip, buf, buf_len, offp);
+  return elf_w (get_proc_name) (as, getpid (), ip, buf, buf_len, offp, arg);
+}
+
+static int
+get_static_elf_filename (unw_addr_space_t as, unw_word_t ip,
+                         char *buf, size_t buf_len, unw_word_t *offp,
+                         void *arg)
+{
+
+  return elf_w (get_elf_filename) (as, getpid (), ip, buf, buf_len, offp, arg);
 }
 
 HIDDEN void
@@ -194,6 +206,11 @@ mips_local_addr_space_init (void)
 # error Unsupported ABI
 #endif
   local_addr_space.addr_size = sizeof (void *);
+#ifndef UNW_REMOTE_ONLY
+# if defined(HAVE_DL_ITERATE_PHDR)
+  local_addr_space.iterate_phdr_function = dl_iterate_phdr;
+# endif
+#endif
   local_addr_space.caching_policy = UNWI_DEFAULT_CACHING_POLICY;
   local_addr_space.acc.find_proc_info = dwarf_find_proc_info;
   local_addr_space.acc.put_unwind_info = put_unwind_info;
@@ -201,8 +218,9 @@ mips_local_addr_space_init (void)
   local_addr_space.acc.access_mem = access_mem;
   local_addr_space.acc.access_reg = access_reg;
   local_addr_space.acc.access_fpreg = access_fpreg;
-  local_addr_space.acc.resume = NULL;  /* mips_local_resume?  FIXME!  */
+  local_addr_space.acc.resume = mips_local_resume;
   local_addr_space.acc.get_proc_name = get_static_proc_name;
+  local_addr_space.acc.get_elf_filename = get_static_elf_filename;
   unw_flush_cache (&local_addr_space, 0, 0);
 }
 

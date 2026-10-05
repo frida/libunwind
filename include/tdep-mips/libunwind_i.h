@@ -54,6 +54,9 @@ struct unw_addr_space
     mips_abi_t abi;
     unsigned int addr_size;
 
+#ifndef UNW_REMOTE_ONLY
+    unw_iterate_phdr_func_t iterate_phdr_function;
+#endif
     unw_caching_policy_t caching_policy;
     _Atomic uint32_t cache_generation;
     unw_word_t dyn_generation;          /* see dyn-common.h */
@@ -64,7 +67,7 @@ struct unw_addr_space
 
 #define tdep_big_endian(as)             ((as)->big_endian)
 
-struct cursor
+struct MAY_ALIAS cursor
   {
     struct dwarf_cursor dwarf;          /* must be first */
     unw_word_t sigcontext_addr;
@@ -145,9 +148,24 @@ dwarf_put (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t val)
 static inline int
 read_s32 (struct dwarf_cursor *c, unw_word_t addr, unw_word_t *val)
 {
-  int offset = addr & 4;
   int ret;
   unw_word_t memval;
+
+  if (sizeof (unw_word_t) == 4)
+    {
+      /* Native O32: access_mem reads 32-bit values, and signal frame
+         addresses are already adjusted for endianness in Gstep.c.  */
+      ret = (*c->as->acc.access_mem) (c->as, addr, &memval, 0, c->as_arg);
+      if (ret < 0)
+        return ret;
+
+      *val = (int32_t) memval;
+      return 0;
+    }
+
+  /* Cross-ABI (64-bit host unwinding O32 target): access_mem reads
+     64-bit values, so extract the correct 32-bit half.  */
+  int offset = addr & 4;
 
   ret = (*c->as->acc.access_mem) (c->as, addr - offset, &memval, 0, c->as_arg);
   if (ret < 0)
@@ -164,18 +182,29 @@ read_s32 (struct dwarf_cursor *c, unw_word_t addr, unw_word_t *val)
 static inline int
 write_s32 (struct dwarf_cursor *c, unw_word_t addr, const unw_word_t *val)
 {
-  int offset = addr & 4;
   int ret;
   unw_word_t memval;
+
+  if (sizeof (unw_word_t) == 4)
+    {
+      /* Native O32: access_mem writes 32-bit values, and signal frame
+         addresses are already adjusted for endianness in Gstep.c.  */
+      memval = (int32_t) *val;
+      return (*c->as->acc.access_mem) (c->as, addr, &memval, 1, c->as_arg);
+    }
+
+  /* Cross-ABI (64-bit host unwinding O32 target): access_mem reads/writes
+     64-bit values, so update the correct 32-bit half.  */
+  int offset = addr & 4;
 
   ret = (*c->as->acc.access_mem) (c->as, addr - offset, &memval, 0, c->as_arg);
   if (ret < 0)
     return ret;
 
   if ((offset != 0) == tdep_big_endian (c->as))
-    memval = (memval & ~0xffffffffLL) | (uint32_t) *val;
+    memval = (memval & ~(unw_word_t) 0xffffffffU) | (uint32_t) *val;
   else
-    memval = (memval & 0xffffffffLL) | (uint32_t) (*val << 32);
+    memval = (memval & (unw_word_t) 0xffffffffU) | ((unw_word_t) (uint32_t) *val << 32);
 
   return (*c->as->acc.access_mem) (c->as, addr - offset, &memval, 1, c->as_arg);
 }
@@ -192,10 +221,10 @@ dwarf_getfp (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t *val)
     return -UNW_EBADREG;
 
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_LOC (loc),
+    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_REG_LOC (loc),
                                        val, 0, c->as_arg);
 
-  addr = DWARF_GET_LOC (loc);
+  addr = DWARF_GET_MEM_LOC (loc);
   if ((ret = (*c->as->acc.access_mem) (c->as, addr + 0, (unw_word_t *) valp,
                                        0, c->as_arg)) < 0)
     return ret;
@@ -215,10 +244,10 @@ dwarf_putfp (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t val)
     return -UNW_EBADREG;
 
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_LOC (loc),
+    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_REG_LOC (loc),
                                        &val, 1, c->as_arg);
 
-  addr = DWARF_GET_LOC (loc);
+  addr = DWARF_GET_MEM_LOC (loc);
   if ((ret = (*c->as->acc.access_mem) (c->as, addr + 0, (unw_word_t *) valp,
                                        1, c->as_arg)) < 0)
     return ret;
@@ -240,20 +269,20 @@ dwarf_get (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t *val)
   assert (!DWARF_IS_FP_LOC (loc));
 
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_reg) (c->as, DWARF_GET_LOC (loc), val,
+    return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc), val,
                                      0, c->as_arg);
   else if (c->as->abi == UNW_MIPS_ABI_O32)
-    return read_s32 (c, DWARF_GET_LOC (loc), val);
+    return read_s32 (c, DWARF_GET_MEM_LOC (loc), val);
   else if (c->as->abi == UNW_MIPS_ABI_N32) {
     if (tdep_big_endian(c->as))
-      return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc) + 4, val,
+      return (*c->as->acc.access_mem) (c->as, DWARF_GET_MEM_LOC (loc) + 4, val,
                                        0, c->as_arg);
     else
-      return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc), val,
+      return (*c->as->acc.access_mem) (c->as, DWARF_GET_MEM_LOC (loc), val,
                                        0, c->as_arg);
   }
   else
-    return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc), val,
+    return (*c->as->acc.access_mem) (c->as, DWARF_GET_MEM_LOC (loc), val,
                                      0, c->as_arg);
 }
 
@@ -270,12 +299,12 @@ dwarf_put (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t val)
   assert (!DWARF_IS_FP_LOC (loc));
 
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_reg) (c->as, DWARF_GET_LOC (loc), &val,
+    return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc), &val,
                                      1, c->as_arg);
   else if (c->as->abi == UNW_MIPS_ABI_O32)
-    return write_s32 (c, DWARF_GET_LOC (loc), &val);
+    return write_s32 (c, DWARF_GET_MEM_LOC (loc), &val);
   else
-    return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc), &val,
+    return (*c->as->acc.access_mem) (c->as, DWARF_GET_MEM_LOC (loc), &val,
                                      1, c->as_arg);
 }
 
@@ -324,9 +353,10 @@ extern int tdep_search_unwind_table (unw_addr_space_t as, unw_word_t ip,
                                      unw_dyn_info_t *di, unw_proc_info_t *pi,
                                      int need_unwind_info, void *arg);
 extern void *tdep_uc_addr (ucontext_t *uc, int reg);
-extern int tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
+extern int tdep_get_elf_image (unw_addr_space_t as, struct elf_image *ei, pid_t pid, unw_word_t ip,
                                unsigned long *segbase, unsigned long *mapoff,
-                               char *path, size_t pathlen);
+                               char *path, size_t pathlen,
+                               void *arg);
 extern void tdep_get_exe_image_path (char *path);
 extern int tdep_access_reg (struct cursor *c, unw_regnum_t reg,
                             unw_word_t *valp, int write);

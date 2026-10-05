@@ -1,0 +1,26 @@
+# Automate stale iossue tagging and closing
+name: Close inactive issues
+on:
+  schedule:
+    - cron: "30 1 * * *"
+permissions:
+  contents: read
+jobs:
+  close-issues:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          stale-issue-label: "needs info"
+          days-before-issue-stale: -1
+          days-before-issue-close: 60
+          close-issue-message: >
+            Without additional information we're not able to resolve this issue.
+            Feel free to add more info or respond to any questions above and we
+            can reopen the case. Thanks for your contribution!
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          repo-token: ${{ secrets.GITHUB_TOKEN }}

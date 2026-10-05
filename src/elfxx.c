@@ -1,6 +1,7 @@
 /* libunwind - a platform-independent unwind library
    Copyright (C) 2003-2005 Hewlett-Packard Co
    Copyright (C) 2007 David Mosberger-Tang
+   Copyright 2026 Stephen M. Webb  <stephen.webb@bregmasoft.ca>
         Contributed by David Mosberger-Tang <dmosberger@gmail.com>
 
 This file is part of libunwind.
@@ -25,27 +26,74 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #include "libunwind_i.h"
+#include "elfxx_i.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <sys/param.h>
-#include <limits.h>
 
-#ifdef HAVE_LZMA
+#if HAVE_LZMA
 #include <lzma.h>
 #endif /* HAVE_LZMA */
 
+/**
+ * A collection of data regarding a function in an ELF image.
+ */
+struct symbol_info
+{
+  const char         *strtab;    /**< Pointer to the ELF image STRTAB section */
+  const Elf_W (Sym)  *sym;       /**< Pointer to an ELF image SYMTAB entry */
+  Elf_W (Addr)        start_ip;  /**< Pointer to the start address of a function */
+};
+
+/**
+ * A collection of data regarding an IP being looked up in an ELF image.
+ */
+struct symbol_lookup_context
+{
+  unw_addr_space_t   as;
+  unw_word_t         ip;
+  struct elf_image  *ei;
+  Elf_W (Addr)       load_offset;
+  Elf_W (Addr)      *min_dist;
+  void              *arg;
+};
+
+/**
+ * A collection of data about where to write symbol information when it's found.
+ */
+struct symbol_callback_data
+{
+  char   *buf;      /**< Pointer to a buffer to contain a NTCS */
+  size_t  buf_len;  /**< Number of bytes in `buf` */
+};
+
+struct ip_range_callback_data
+{
+  Elf_W (Addr) *start_ip;
+  Elf_W (Addr) *end_ip;
+};
+
+/**
+ * Function signature for symtab lookup callbacks
+ */
+typedef int (*symtab_lookup_function_t)(const struct symbol_lookup_context *,
+                                        const struct symbol_info *,
+                                        void *);
+
 static Elf_W (Shdr)*
-elf_w (section_table) (struct elf_image *ei)
+elf_w (section_table) (const struct elf_image *ei)
 {
   Elf_W (Ehdr) *ehdr = ei->image;
   Elf_W (Off) soff;
+  size_t table_size;
 
   soff = ehdr->e_shoff;
-  if (soff + ehdr->e_shnum * ehdr->e_shentsize > ei->size)
+  table_size = (size_t) ehdr->e_shnum * ehdr->e_shentsize;
+  if (soff > ei->size || table_size > ei->size - (size_t) soff)
     {
-      Debug (1, "section table outside of image? (%lu > %lu)\n",
-             (unsigned long) (soff + ehdr->e_shnum * ehdr->e_shentsize),
-             (unsigned long) ei->size);
+      Debug (1, "section table outside of image? (%lu + %zu > %zu)\n",
+             (unsigned long) soff, table_size, ei->size);
       return NULL;
     }
 
@@ -53,7 +101,7 @@ elf_w (section_table) (struct elf_image *ei)
 }
 
 static char*
-elf_w (string_table) (struct elf_image *ei, int section)
+elf_w (string_table) (const struct elf_image *ei, int section)
 {
   Elf_W (Ehdr) *ehdr = ei->image;
   Elf_W (Off) soff, str_soff;
@@ -84,12 +132,129 @@ elf_w (string_table) (struct elf_image *ei, int section)
   return ei->image + str_shdr->sh_offset;
 }
 
-static int
-elf_w (lookup_symbol) (unw_addr_space_t as,
-                       unw_word_t ip, struct elf_image *ei,
-                       Elf_W (Addr) load_offset,
-                       char *buf, size_t buf_len, Elf_W (Addr) *min_dist)
+static Elf_W (Off)
+dynamic_va_to_file_offset (Elf_W (Addr) va, Elf_W (Phdr) *phdr, size_t phnum)
 {
+  for (size_t i = 0; i < phnum; ++i)
+    {
+      if (phdr[i].p_type != PT_LOAD)
+        continue;
+
+      if (va >= phdr[i].p_vaddr && (va + sizeof(Elf_W (Addr))) < phdr[i].p_vaddr + phdr[i].p_filesz)
+        return phdr[i].p_offset + (va - phdr[i].p_vaddr);
+    }
+  return 0;
+}
+
+static int
+elf_w (lookup_symbol_from_dynamic) (unw_addr_space_t                    as UNUSED,
+                                    const struct symbol_lookup_context *context,
+                                    symtab_lookup_function_t            symtab_lookup,
+                                    void                               *data)
+
+{
+  struct elf_image *ei = context->ei;
+  Elf_W (Addr) load_offset = context->load_offset;
+  Elf_W (Addr) file_offset = 0;
+  Elf_W (Ehdr) *ehdr = ei->image;
+  Elf_W (Sym) *sym = NULL, *symtab = NULL;
+  Elf_W (Phdr) *phdr;
+  Elf_W (Word) sym_num = 0;
+  Elf_W (Word) *hash = NULL;
+  uint32_t *gnu_hash = NULL;
+  Elf_W (Addr) val;
+  const char *strtab = NULL;
+  int ret = -UNW_ENOINFO;
+  size_t i;
+  Elf_W(Dyn) *dyn = NULL;
+
+  phdr = (Elf_W (Phdr) *) ((char *) ei->image + ehdr->e_phoff);
+  for (i = 0; i < ehdr->e_phnum; ++i)
+    if (phdr[i].p_type == PT_PHDR)
+      {
+        file_offset = phdr[i].p_vaddr - phdr[i].p_offset;
+      }
+    else if (phdr[i].p_type == PT_DYNAMIC)
+      {
+        dyn = (Elf_W (Dyn) *) elf_w (get_program_segment) (ei, &phdr[i], NULL);
+        break;
+      }
+
+  if (!dyn)
+    return -UNW_ENOINFO;
+
+  for (; dyn->d_tag != DT_NULL; ++dyn)
+    {
+      switch (dyn->d_tag)
+        {
+        case DT_SYMTAB:
+          symtab = (Elf_W (Sym) *) ((char *) ei->image + dyn->d_un.d_ptr - file_offset);
+          break;
+        case DT_STRTAB:
+          strtab = (const char *) ((char *) ei->image + dyn->d_un.d_ptr - file_offset);
+          break;
+        case DT_HASH:
+          hash = (Elf_W (Word) *) ((char *) ei->image + dyn->d_un.d_ptr - file_offset);
+          break;
+        case DT_GNU_HASH:
+          {
+            Elf_W (Off) gh_file_offset = dynamic_va_to_file_offset (dyn->d_un.d_ptr, phdr, ehdr->e_phnum);
+            gnu_hash = (uint32_t *) ((char *) ei->image + gh_file_offset);
+            break;
+          }
+        default:
+          break;
+        }
+    }
+
+  if (!symtab || !strtab || (!hash && !gnu_hash))
+      return -UNW_ENOINFO;
+
+  if (elf_w (dynamic_symtab_count) (hash, gnu_hash, &sym_num) < 0)
+    return -UNW_ENOINFO;
+
+  for (i = 0; i < sym_num; ++i)
+    {
+      sym = &symtab[i];
+      if (ELF_W (ST_TYPE) (sym->st_info) == STT_FUNC && sym->st_shndx != SHN_UNDEF)
+        {
+          val = sym->st_value;
+          if (sym->st_shndx != SHN_ABS)
+            val += load_offset;
+          if (tdep_get_func_addr (as, val, &val, context->arg) < 0)
+            continue;
+          Debug (16, "0x%016lx info=0x%02x %s\n",
+                 (long) val, sym->st_info, strtab + sym->st_name);
+
+          struct symbol_info syminfo =
+            {
+              .strtab = strtab,
+              .sym = sym,
+              .start_ip = val
+            };
+          ret = symtab_lookup (context, &syminfo, data);
+
+          /* Keep going if the IP is not found in this symtab entry. */
+          if (ret == -UNW_ENOINFO)
+            {
+              continue;
+            }
+
+          break;
+        }
+    }
+
+  return ret;
+}
+
+static int
+elf_w (lookup_symbol_closeness) (unw_addr_space_t                    as UNUSED,
+                                 const struct symbol_lookup_context *context,
+                                 symtab_lookup_function_t            symtab_lookup,
+                                 void                               *data)
+{
+  struct elf_image *ei = context->ei;
+  Elf_W (Addr) load_offset = context->load_offset;
   size_t syment_size;
   Elf_W (Ehdr) *ehdr = ei->image;
   Elf_W (Sym) *sym, *symtab, *symtab_end;
@@ -105,7 +270,7 @@ elf_w (lookup_symbol) (unw_addr_space_t as,
   if (!shdr)
     return -UNW_ENOINFO;
 
-  for (i = 0; i < ehdr->e_shnum; ++i)
+  for (i = 0; i < ehdr->e_shnum && ret == -UNW_ENOINFO; ++i)
     {
       switch (shdr->sh_type)
         {
@@ -132,19 +297,26 @@ elf_w (lookup_symbol) (unw_addr_space_t as,
                   val = sym->st_value;
                   if (sym->st_shndx != SHN_ABS)
                     val += load_offset;
-                  if (tdep_get_func_addr (as, val, &val) < 0)
+                  if (tdep_get_func_addr (as, val, &val, context->arg) < 0)
                     continue;
                   Debug (16, "0x%016lx info=0x%02x %s\n",
                          (long) val, sym->st_info, strtab + sym->st_name);
 
-                  if ((Elf_W (Addr)) (ip - val) < *min_dist)
+                  struct symbol_info syminfo =
                     {
-                      *min_dist = (Elf_W (Addr)) (ip - val);
-                      strncpy (buf, strtab + sym->st_name, buf_len);
-                      buf[buf_len - 1] = '\0';
-                      ret = (strlen (strtab + sym->st_name) >= buf_len
-                             ? -UNW_ENOMEM : 0);
+                      .strtab   = strtab,
+                      .sym      = sym,
+                      .start_ip = val
+                    };
+                  ret = symtab_lookup (context, &syminfo, data);
+
+                  /* Keep going if the IP is not found in this symtab entry. */
+                  if (ret == -UNW_ENOINFO)
+                    {
+                      continue;
                     }
+
+                  break;
                 }
             }
           break;
@@ -154,28 +326,155 @@ elf_w (lookup_symbol) (unw_addr_space_t as,
         }
       shdr = (Elf_W (Shdr) *) (((char *) shdr) + ehdr->e_shentsize);
     }
+
+  /* If it wasn't found in the ELF symtab, check the synamic symtab. */
+  if (ret == -UNW_ENOINFO)
+    ret = elf_w (lookup_symbol_from_dynamic) (as, context, symtab_lookup, data);
+
   return ret;
 }
 
+/**
+ * Finds the symbol in the symtab for an IP
+ * @param[in]  context  Information on the IP being looked up
+ * @param[in]  syminfo  Information on the SYMTAB entry found for the IP
+ * @param[in]  data     Information on where to put the symbol name found
+ *
+ * @returns -UNW_ENOINFO if the context does not match the symtab
+ * @returns -UNW_ENOMEM if the found symbol will not fit in the buffer
+ * @returns UNE_ESUCCESS otherwise
+ */
+static int
+elf_w (lookup_symbol_callback)(const struct symbol_lookup_context *context,
+                               const struct symbol_info           *syminfo,
+                               void                               *data)
+{
+  struct symbol_callback_data *d = data;
+  int ret = -UNW_ENOINFO;
+
+  if (context->ip >= syminfo->start_ip &&
+      context->ip < (syminfo->start_ip + syminfo->sym->st_size))
+    {
+      if ((Elf_W (Addr)) (context->ip - syminfo->start_ip) < *(context->min_dist))
+        {
+          *(context->min_dist) = (Elf_W (Addr)) (context->ip - syminfo->start_ip);
+          char const* const sym_name     = syminfo->strtab + syminfo->sym->st_name;
+          size_t            sym_name_len = strlen(sym_name);
+          Debug (1, "candidate sym: %s@%#010lx\n", sym_name, syminfo->start_ip);
+          if (sym_name_len >= d->buf_len)
+            {
+              Debug (1, "symbol length %zu exceeds buffer of length %zu\n",
+                     sym_name_len+1, d->buf_len);
+              sym_name_len = d->buf_len - 1; /* adjust for null terminator */
+              ret = -UNW_ENOMEM; /* indicate truncation of symbol name */
+            }
+          else
+            {
+              ret = UNW_ESUCCESS;
+            }
+          memcpy(d->buf, sym_name, sym_name_len);
+          d->buf[sym_name_len] = 0; /* null terminate */
+        }
+    }
+
+  return ret;
+}
+
+static int
+elf_w (lookup_symbol) (unw_addr_space_t as,
+                       unw_word_t ip, struct elf_image *ei,
+                       Elf_W (Addr) load_offset,
+                       char *buf, size_t buf_len, Elf_W (Addr) *min_dist,
+                       void *arg)
+{
+  struct symbol_lookup_context context =
+    {
+      .as = as,
+      .ip = ip,
+      .ei = ei,
+      .load_offset = load_offset,
+      .min_dist = min_dist,
+      .arg = arg,
+    };
+  struct symbol_callback_data data =
+    {
+      .buf = buf, 
+      .buf_len = buf_len,
+    };
+  return elf_w (lookup_symbol_closeness) (as,
+                                          &context,
+                                          elf_w (lookup_symbol_callback),
+                                          &data);
+}
+
+static int
+elf_w (lookup_ip_range_callback)(const struct symbol_lookup_context *context,
+                                 const struct symbol_info *syminfo, void *data)
+{
+  int ret = -UNW_ENOINFO;
+  struct ip_range_callback_data *d = data;
+
+  if (context->ip < syminfo->start_ip ||
+      context->ip >= (syminfo->start_ip + syminfo->sym->st_size))
+    return -UNW_ENOINFO;
+
+  if ((Elf_W (Addr)) (context->ip - syminfo->start_ip) < *(context->min_dist))
+    {
+      *(context->min_dist) = (Elf_W (Addr)) (context->ip - syminfo->start_ip);
+      *(d->start_ip) = syminfo->start_ip;
+      *(d->end_ip) = syminfo->start_ip + syminfo->sym->st_size;
+
+      ret = UNW_ESUCCESS;
+    }
+
+  return ret;
+}
+
+static int
+elf_w (lookup_ip_range)(unw_addr_space_t as,
+                        unw_word_t ip, struct elf_image *ei,
+                        Elf_W (Addr) load_offset, Elf_W (Addr) *start_ip,
+                        Elf_W (Addr) *end_ip, Elf_W (Addr) *min_dist,
+                        void *arg)
+{
+  struct symbol_lookup_context context =
+    {
+      .as = as,
+      .ip = ip,
+      .ei = ei,
+      .load_offset = load_offset,
+      .min_dist = min_dist,
+      .arg = arg,
+    };
+  struct ip_range_callback_data data =
+    {
+      .start_ip = start_ip,
+      .end_ip = end_ip
+    };
+  return elf_w (lookup_symbol_closeness) (as,
+                                          &context,
+                                          elf_w (lookup_ip_range_callback),
+                                          &data);
+}
+
 static Elf_W (Addr)
-elf_w (get_load_offset) (struct elf_image *ei, unsigned long segbase,
-                         unsigned long mapoff)
+elf_w (get_load_offset) (struct elf_image *ei, unsigned long segbase)
 {
   Elf_W (Addr) offset = 0;
   Elf_W (Ehdr) *ehdr;
   Elf_W (Phdr) *phdr;
   int i;
-  // mapoff is obtained from mmap informations, so is always aligned on a page size.
+  // mapoff is obtained from mmap information, so it is always aligned on a page size.
   // PT_LOAD program headers p_offset however is not guaranteed to be aligned on a
   // page size, ld.lld generate libraries where this is not the case. So we must
   // make sure we compare both values with the same alignment.
-  unsigned long pagesize_alignment_mask = ~(((unsigned long)getpagesize()) - 1UL);
+  unsigned long pagesize_alignment_mask = ~(unw_page_size - 1UL);
 
   ehdr = ei->image;
   phdr = (Elf_W (Phdr) *) ((char *) ei->image + ehdr->e_phoff);
 
   for (i = 0; i < ehdr->e_phnum; ++i)
-    if (phdr[i].p_type == PT_LOAD && (phdr[i].p_offset & pagesize_alignment_mask) == mapoff)
+    if (phdr[i].p_type == PT_LOAD && phdr[i].p_flags & PF_X)
       {
         offset = segbase - phdr[i].p_vaddr + (phdr[i].p_offset & (~pagesize_alignment_mask));
         break;
@@ -185,8 +484,62 @@ elf_w (get_load_offset) (struct elf_image *ei, unsigned long segbase,
 }
 
 #if HAVE_LZMA
+
+#define XZ_MAX_ALLOCS 16
+struct xz_allocator_data {
+  struct {
+    void   *ptr;
+    size_t  size;
+  } allocations[XZ_MAX_ALLOCS];
+  uint8_t n_allocs;
+};
+
+static void*
+xz_alloc (void *opaque, size_t nmemb, size_t size)
+{
+  struct xz_allocator_data *data = opaque;
+  if (XZ_MAX_ALLOCS == data->n_allocs)
+    return NULL;
+  size = UNW_ALIGN(size * nmemb, unw_page_size);
+  void *ptr;
+  GET_MEMORY (ptr, size);
+  if (!ptr) return ptr;
+  data->allocations[data->n_allocs].ptr  = ptr;
+  data->allocations[data->n_allocs].size = size;
+  ++data->n_allocs;
+  return ptr;
+}
+
+static void
+xz_free (void *opaque, void *ptr)
+{
+  struct xz_allocator_data *data = opaque;
+  for (uint8_t i = data->n_allocs; i-- > 0;)
+    {
+      if (data->allocations[i].ptr == ptr)
+        {
+          mi_munmap (ptr, data->allocations[i].size);
+          --data->n_allocs;
+          if (i != data->n_allocs)
+            {
+              data->allocations[i] = data->allocations[data->n_allocs];
+            }
+          return;
+        }
+    }
+}
+
+static void
+xz_free_all (struct xz_allocator_data *data)
+{
+  while (data->n_allocs-- > 0)
+    {
+      mi_munmap (data->allocations[data->n_allocs].ptr, data->allocations[data->n_allocs].size);
+    }
+}
+
 static size_t
-xz_uncompressed_size (uint8_t *compressed, size_t length)
+xz_uncompressed_size (lzma_allocator *xz_allocator, uint8_t *compressed, size_t length)
 {
   uint64_t memlimit = UINT64_MAX;
   size_t ret = 0, pos = 0;
@@ -204,7 +557,7 @@ xz_uncompressed_size (uint8_t *compressed, size_t length)
     return 0;
 
   uint8_t *indexdata = footer - options.backward_size;
-  if (lzma_index_buffer_decode (&index, &memlimit, NULL, indexdata,
+  if (lzma_index_buffer_decode (&index, &memlimit, xz_allocator, indexdata,
                                 &pos, options.backward_size) != LZMA_OK)
     return 0;
 
@@ -213,7 +566,7 @@ xz_uncompressed_size (uint8_t *compressed, size_t length)
       ret = lzma_index_uncompressed_size (index);
     }
 
-  lzma_index_end (index, NULL);
+  lzma_index_end (index, xz_allocator);
   return ret;
 }
 
@@ -225,6 +578,15 @@ elf_w (extract_minidebuginfo) (struct elf_image *ei, struct elf_image *mdi)
   uint64_t memlimit = UINT64_MAX; /* no memory limit */
   size_t compressed_len, uncompressed_len;
 
+  struct xz_allocator_data allocator_data;
+  lzma_allocator xz_allocator =
+  {
+    .alloc  = xz_alloc,
+    .free   = xz_free,
+    .opaque = &allocator_data
+  };
+  memset (&allocator_data, 0, sizeof(allocator_data));
+
   shdr = elf_w (find_section) (ei, ".gnu_debugdata");
   if (!shdr)
     return 0;
@@ -232,29 +594,34 @@ elf_w (extract_minidebuginfo) (struct elf_image *ei, struct elf_image *mdi)
   compressed = ((uint8_t *) ei->image) + shdr->sh_offset;
   compressed_len = shdr->sh_size;
 
-  uncompressed_len = xz_uncompressed_size (compressed, compressed_len);
+  uncompressed_len = xz_uncompressed_size (&xz_allocator, compressed, compressed_len);
   if (uncompressed_len == 0)
     {
+      xz_free_all (&allocator_data);
       Debug (1, "invalid .gnu_debugdata contents\n");
       return 0;
     }
 
   mdi->size = uncompressed_len;
-  mdi->image = mmap (NULL, uncompressed_len, PROT_READ|PROT_WRITE,
-                     MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+  GET_MEMORY (mdi->image, uncompressed_len);
 
-  if (mdi->image == MAP_FAILED)
-    return 0;
+  if (!mdi->image)
+    {
+      xz_free_all (&allocator_data);
+      return 0;
+    }
 
   size_t in_pos = 0, out_pos = 0;
   lzma_ret lret;
-  lret = lzma_stream_buffer_decode (&memlimit, 0, NULL,
+  lret = lzma_stream_buffer_decode (&memlimit, 0, &xz_allocator,
                                     compressed, &in_pos, compressed_len,
                                     mdi->image, &out_pos, mdi->size);
+  xz_free_all (&allocator_data);
+
   if (lret != LZMA_OK)
     {
       Debug (1, "LZMA decompression failed: %d\n", lret);
-      munmap (mdi->image, mdi->size);
+      mi_munmap (mdi->image, mdi->size);
       return 0;
     }
 
@@ -262,7 +629,7 @@ elf_w (extract_minidebuginfo) (struct elf_image *ei, struct elf_image *mdi)
 }
 #else
 static int
-elf_w (extract_minidebuginfo) (struct elf_image *ei, struct elf_image *mdi)
+elf_w (extract_minidebuginfo) (struct elf_image *ei UNUSED, struct elf_image *mdi UNUSED)
 {
   return 0;
 }
@@ -276,16 +643,15 @@ elf_w (extract_minidebuginfo) (struct elf_image *ei, struct elf_image *mdi)
 HIDDEN int
 elf_w (get_proc_name_in_image) (unw_addr_space_t as, struct elf_image *ei,
                        unsigned long segbase,
-                       unsigned long mapoff,
                        unw_word_t ip,
-                       char *buf, size_t buf_len, unw_word_t *offp)
+                       char *buf, size_t buf_len, unw_word_t *offp, void *arg)
 {
   Elf_W (Addr) load_offset;
   Elf_W (Addr) min_dist = ~(Elf_W (Addr))0;
   int ret;
 
-  load_offset = elf_w (get_load_offset) (ei, segbase, mapoff);
-  ret = elf_w (lookup_symbol) (as, ip, ei, load_offset, buf, buf_len, &min_dist);
+  load_offset = elf_w (get_load_offset) (ei, segbase);
+  ret = elf_w (lookup_symbol) (as, ip, ei, load_offset, buf, buf_len, &min_dist, arg);
 
   /* If the ELF image has MiniDebugInfo embedded in it, look up the symbol in
      there as well and replace the previously found if it is closer. */
@@ -293,7 +659,7 @@ elf_w (get_proc_name_in_image) (unw_addr_space_t as, struct elf_image *ei,
   if (elf_w (extract_minidebuginfo) (ei, &mdi))
     {
       int ret_mdi = elf_w (lookup_symbol) (as, ip, &mdi, load_offset, buf,
-                                           buf_len, &min_dist);
+                                           buf_len, &min_dist, arg);
 
       /* Closer symbol was found (possibly truncated). */
       if (ret_mdi == 0 || ret_mdi == -UNW_ENOMEM)
@@ -301,7 +667,7 @@ elf_w (get_proc_name_in_image) (unw_addr_space_t as, struct elf_image *ei,
           ret = ret_mdi;
         }
 
-      munmap (mdi.image, mdi.size);
+      mi_munmap (mdi.image, mdi.size);
     }
 
   if (min_dist >= ei->size)
@@ -313,31 +679,108 @@ elf_w (get_proc_name_in_image) (unw_addr_space_t as, struct elf_image *ei,
 
 HIDDEN int
 elf_w (get_proc_name) (unw_addr_space_t as, pid_t pid, unw_word_t ip,
-                       char *buf, size_t buf_len, unw_word_t *offp)
+                       char *buf, size_t buf_len, unw_word_t *offp, void *arg)
 {
   unsigned long segbase, mapoff;
   struct elf_image ei;
   int ret;
   char file[PATH_MAX];
 
-  ret = tdep_get_elf_image (&ei, pid, ip, &segbase, &mapoff, file, PATH_MAX);
+  ret = tdep_get_elf_image (as, &ei, pid, ip, &segbase, &mapoff, file, PATH_MAX, arg);
   if (ret < 0)
     return ret;
 
-  ret = elf_w (load_debuglink) (file, &ei, 1);
+  ret = elf_w (load_debuginfo) (file, &ei, 1);
   if (ret < 0)
     return ret;
 
-  ret = elf_w (get_proc_name_in_image) (as, &ei, segbase, mapoff, ip, buf, buf_len, offp);
+  ret = elf_w (get_proc_name_in_image) (as, &ei, segbase, ip, buf, buf_len, offp, arg);
 
-  munmap (ei.image, ei.size);
+  mi_munmap (ei.image, ei.size);
   ei.image = NULL;
 
   return ret;
 }
 
+HIDDEN int
+elf_w (get_proc_ip_range_in_image) (unw_addr_space_t as, struct elf_image *ei,
+                       unsigned long segbase,
+                       unw_word_t ip,
+                       unw_word_t *start, unw_word_t *end, void *arg)
+{
+  Elf_W (Addr) load_offset;
+  Elf_W (Addr) min_dist = ~(Elf_W (Addr))0;
+  int ret;
+
+  load_offset = elf_w (get_load_offset) (ei, segbase);
+  ret = elf_w (lookup_ip_range) (as, ip, ei, load_offset, start, end, &min_dist, arg);
+
+  /* If the ELF image has MiniDebugInfo embedded in it, look up the symbol in
+     there as well and replace the previously found if it is closer. */
+  struct elf_image mdi;
+  if (elf_w (extract_minidebuginfo) (ei, &mdi))
+    {
+      int ret_mdi = elf_w (lookup_ip_range) (as, ip, &mdi, load_offset, start,
+                                             end, &min_dist, arg);
+
+      /* Closer symbol was found (possibly truncated). */
+      if (ret_mdi == 0 || ret_mdi == -UNW_ENOMEM)
+        {
+          ret = ret_mdi;
+        }
+
+      mi_munmap (mdi.image, mdi.size);
+    }
+
+  if (min_dist >= ei->size)
+    return -UNW_ENOINFO;                /* not found */
+  return ret;
+}
+
+HIDDEN int
+elf_w (get_proc_ip_range) (unw_addr_space_t as, pid_t pid, unw_word_t ip,
+                           unw_word_t *start, unw_word_t *end, void *arg)
+{
+  unsigned long segbase, mapoff;
+  struct elf_image ei;
+  int ret;
+  char file[PATH_MAX];
+
+  ret = tdep_get_elf_image (as, &ei, pid, ip, &segbase, &mapoff, file, PATH_MAX, arg);
+  if (ret < 0)
+    return ret;
+
+  ret = elf_w (load_debuginfo) (file, &ei, 1);
+  if (ret < 0)
+    return ret;
+
+  ret = elf_w (get_proc_ip_range_in_image) (as, &ei, segbase, ip, start, end, arg);
+
+  mi_munmap (ei.image, ei.size);
+  ei.image = NULL;
+
+  return ret;
+}
+
+HIDDEN int
+elf_w (get_elf_filename) (unw_addr_space_t as UNUSED, pid_t pid, unw_word_t ip,
+                          char *buf, size_t buf_len, unw_word_t *offp, void *arg)
+{
+  unsigned long segbase, mapoff;
+  int ret = UNW_ESUCCESS;
+
+  // use NULL to no map elf image
+  ret = tdep_get_elf_image (as, NULL, pid, ip, &segbase, &mapoff, buf, buf_len, arg);
+  if (ret < 0)
+    return ret;
+
+  if (offp)
+      *offp = ip - segbase + mapoff;
+  return ret;
+}
+
 HIDDEN Elf_W (Shdr)*
-elf_w (find_section) (struct elf_image *ei, const char* secname)
+elf_w (find_section) (const struct elf_image *ei, const char* secname)
 {
   Elf_W (Ehdr) *ehdr = ei->image;
   Elf_W (Shdr) *shdr;
@@ -380,6 +823,157 @@ elf_w (find_section) (struct elf_image *ei, const char* secname)
   return 0;
 }
 
+
+static char *
+elf_w (add_hex_byte) (char *str, uint8_t byte)
+{
+  const char hex[] = "0123456789abcdef";
+
+  *str++ = hex[byte >> 4];
+  *str++ = hex[byte & 0xf];
+  *str = 0;
+
+  return str;
+}
+
+
+static int
+elf_w (find_build_id_path) (const struct elf_image *ei, char *path, unsigned path_len)
+{
+/*
+ * build-id is only available on GNU plaforms. So on non-GNU platforms this
+ * function just returns fail (-1).
+ */
+#if defined(ELF_NOTE_GNU) && defined(NT_GNU_BUILD_ID)
+  const Elf_W (Ehdr) *ehdr = ei->image;
+  const Elf_W (Phdr) *phdr;
+  unsigned i;
+
+  if (!elf_w (valid_object) (ei))
+    return -1;
+
+  phdr = (Elf_W (Phdr) *) ((uint8_t *) ehdr + ehdr->e_phoff);
+
+  for (i = 0; i < ehdr->e_phnum; ++i, phdr = (const Elf_W (Phdr) *) (((const uint8_t *) phdr) + ehdr->e_phentsize))
+    {
+      const uint8_t *notes;
+      const uint8_t *notes_end;
+
+      /* The build-id is in a note section */
+      if (phdr->p_type != PT_NOTE)
+        continue;
+
+      notes = elf_w (get_program_segment) (ei, phdr, &notes_end);
+
+      while(notes < notes_end)
+        {
+          const char prefix[] = "/usr/lib/debug/.build-id/";
+
+          /* See "man 5 elf" for notes about alignment in Nhdr */
+          const Elf_W(Nhdr) *nhdr = (const Elf_W(Nhdr) *) notes;
+          const Elf_W(Word) namesz = nhdr->n_namesz;
+          const Elf_W(Word) descsz = nhdr->n_descsz;
+          const Elf_W(Word) nameasz = UNW_ALIGN(namesz, 4); /* Aligned size */
+          const char *name = (const char *) (nhdr + 1);
+          const uint8_t *desc = (const uint8_t *) name + nameasz;
+          unsigned j;
+
+          notes += sizeof(*nhdr) + nameasz + UNW_ALIGN(descsz, 4);
+
+          if ((namesz != sizeof(ELF_NOTE_GNU)) ||  /* Spec says must be "GNU" with a NULL */
+              (nhdr->n_type != NT_GNU_BUILD_ID) || /* Spec says must be NT_GNU_BUILD_ID   */
+              (strcmp(name, ELF_NOTE_GNU) != 0))   /* Must be "GNU" with NULL termination */
+            continue;
+
+          /* Validate that we have enough space */
+          if (path_len < (sizeof(prefix) +     /* Path prefix inc NULL */
+                          2 +                  /* Subdirectory         */
+                          1 +                  /* Directory separator  */
+                          (2 * (descsz - 1)) + /* Leaf filename        */
+                          6))                  /* .debug extension     */
+            return -1;
+
+          memcpy(path, prefix, sizeof(prefix));
+
+          path = elf_w (add_hex_byte) (path + sizeof(prefix) - 1, *desc);
+          *path++ = '/';
+
+          for(j = 1, ++desc; j < descsz; ++j, ++desc)
+            path = elf_w (add_hex_byte) (path, *desc);
+
+          strcat(path, ".debug");
+
+          return 0;
+        }
+    }
+#endif /* defined(ELF_NOTE_GNU) */
+
+  return -1;
+}
+
+/* Compute the CRC-32 checksum stored in a .gnu_debuglink section.
+ *
+ * This is the ordinary CRC-32 (the reversed 0x04c11db7 polynomial, as used by
+ * zlib), computed over the entire contents of the separate debug file.  The
+ * nibble-wide table keeps the table small at the cost of two lookups per byte.
+ */
+static uint32_t
+debuglink_crc32 (const uint8_t *buf, size_t len)
+{
+  static const uint32_t table[16] =
+    {
+      0x00000000, 0x1db71064, 0x3b6e20c8, 0x26d930ac,
+      0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
+      0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c,
+      0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c
+    };
+  uint32_t crc = 0xffffffff;
+  size_t i;
+
+  for (i = 0; i < len; ++i)
+    {
+      crc ^= buf[i];
+      crc = (crc >> 4) ^ table[crc & 0xf];
+      crc = (crc >> 4) ^ table[crc & 0xf];
+    }
+
+  return ~crc;
+}
+
+/* Load a candidate separate debug file named by a .gnu_debuglink section.
+ *
+ * The file is accepted only if its CRC-32 matches the one recorded in the
+ * .gnu_debuglink section.  Without that check a stripped file with a matching
+ * name (typically the executable itself, since the debug link need not carry
+ * a .debug suffix) would be accepted in place of the real debug file, or a
+ * mismatched debug file would produce bogus symbolic decodes.
+ *
+ * Returns 0 on success, -1 otherwise.  On failure ei->image is NULL.
+ */
+static int
+elf_w (load_debuglink_file) (const char *file, struct elf_image *ei, uint32_t crc)
+{
+  uint32_t file_crc;
+
+  if (elf_w (load_debuginfo) (file, ei, -1) != 0)
+    {
+      ei->image = NULL;
+      return -1;
+    }
+
+  file_crc = debuglink_crc32 (ei->image, ei->size);
+  if (file_crc != crc)
+    {
+      Debug (1, "CRC mismatch for debug file %s (%08x, expected %08x)\n",
+             file, file_crc, crc);
+      mi_munmap (ei->image, ei->size);
+      ei->image = NULL;
+      return -1;
+    }
+
+  return 0;
+}
+
 /* Load a debug section, following .gnu_debuglink if appropriate
  * Loads ei from file if not already mapped.
  * If is_local, will also search sys directories /usr/local/dbg
@@ -388,18 +982,19 @@ elf_w (find_section) (struct elf_image *ei, const char* secname)
  * ei will be mapped to file or the located .gnu_debuglink from file
  */
 HIDDEN int
-elf_w (load_debuglink) (const char* file, struct elf_image *ei, int is_local)
+elf_w (load_debuginfo) (const char* file, struct elf_image *ei, int is_local)
 {
   int ret;
   Elf_W (Shdr) *shdr;
   Elf_W (Ehdr) *prev_image;
   off_t prev_size;
+  char path[PATH_MAX];
 
   if (!ei->image)
     {
       ret = elf_map_image(ei, file);
       if (ret)
-	return ret;
+        return ret;
     }
 
   prev_image = ei->image;
@@ -410,26 +1005,52 @@ elf_w (load_debuglink) (const char* file, struct elf_image *ei, int is_local)
     return 0;
   }
 
+  ret = elf_w (find_build_id_path) (ei, path, sizeof(path));
+  if (ret == 0)
+    {
+      ei->image = NULL;
+
+      ret = elf_w (load_debuginfo) (path, ei, -1);
+      if (ret == 0)
+        {
+          mi_munmap (prev_image, prev_size);
+          return 0;
+        }
+
+      ei->image = prev_image;
+      ei->size  = prev_size;
+    }
+
   shdr = elf_w (find_section) (ei, ".gnu_debuglink");
   if (shdr) {
     if (shdr->sh_size >= PATH_MAX ||
 	(shdr->sh_offset + shdr->sh_size > ei->size))
-      {
-	return 0;
-      }
+      return 0;
 
     {
       char linkbuf[shdr->sh_size];
       char *link = ((char *) ei->image) + shdr->sh_offset;
-      char *p;
+      const char *p;
       static const char *debugdir = "/usr/lib/debug";
       char basedir[strlen(file) + 1];
       char newname[shdr->sh_size + strlen (debugdir) + strlen (file) + 9];
+      size_t crc_offset;
+      uint32_t crc;
 
       memcpy(linkbuf, link, shdr->sh_size);
 
       if (memchr (linkbuf, 0, shdr->sh_size) == NULL)
 	return 0;
+
+      /* The section holds the NUL-terminated file name, padded to a
+	 four-byte boundary, followed by the CRC-32 of the debug file.  */
+      crc_offset = UNW_ALIGN (strlen (linkbuf) + 1, 4);
+      if (crc_offset + sizeof (crc) > shdr->sh_size)
+	{
+	  Debug (1, "Malformed .gnu_debuglink section in %s\n", file);
+	  return 0;
+	}
+      memcpy (&crc, linkbuf + crc_offset, sizeof (crc));
 
       ei->image = NULL;
 
@@ -447,14 +1068,14 @@ elf_w (load_debuglink) (const char* file, struct elf_image *ei, int is_local)
       strcpy (newname, basedir);
       strcat (newname, "/");
       strcat (newname, linkbuf);
-      ret = elf_w (load_debuglink) (newname, ei, -1);
+      ret = elf_w (load_debuglink_file) (newname, ei, crc);
 
       if (ret == -1)
 	{
 	  strcpy (newname, basedir);
 	  strcat (newname, "/.debug/");
 	  strcat (newname, linkbuf);
-	  ret = elf_w (load_debuglink) (newname, ei, -1);
+	  ret = elf_w (load_debuglink_file) (newname, ei, crc);
 	}
 
       if (ret == -1 && is_local == 1)
@@ -463,7 +1084,7 @@ elf_w (load_debuglink) (const char* file, struct elf_image *ei, int is_local)
 	  strcat (newname, basedir);
 	  strcat (newname, "/");
 	  strcat (newname, linkbuf);
-	  ret = elf_w (load_debuglink) (newname, ei, -1);
+	  ret = elf_w (load_debuglink_file) (newname, ei, crc);
 	}
 
       if (ret == -1)
@@ -476,7 +1097,7 @@ elf_w (load_debuglink) (const char* file, struct elf_image *ei, int is_local)
         }
       else
         {
-          munmap (prev_image, prev_size);
+          mi_munmap (prev_image, prev_size);
         }
 
       return ret;

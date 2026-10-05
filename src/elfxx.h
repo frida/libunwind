@@ -24,6 +24,9 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
+#ifndef elfxx_h
+#define elfxx_h
+
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -45,20 +48,32 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 extern int elf_w (get_proc_name) (unw_addr_space_t as,
                                   pid_t pid, unw_word_t ip,
                                   char *buf, size_t len,
-                                  unw_word_t *offp);
+                                  unw_word_t *offp, void *arg);
 
 extern int elf_w (get_proc_name_in_image) (unw_addr_space_t as,
                                            struct elf_image *ei,
                                            unsigned long segbase,
-                                           unsigned long mapoff,
                                            unw_word_t ip,
-                                           char *buf, size_t buf_len, unw_word_t *offp);
+                                           char *buf, size_t buf_len, unw_word_t *offp,
+                                           void *arg);
 
-extern Elf_W (Shdr)* elf_w (find_section) (struct elf_image *ei, const char* secname);
-extern int elf_w (load_debuglink) (const char* file, struct elf_image *ei, int is_local);
+extern int elf_w (get_proc_ip_range) (unw_addr_space_t as,
+                                      pid_t pid, unw_word_t ip,
+                                      unw_word_t *start, unw_word_t *end, void *arg);
+
+extern int elf_w (get_proc_ip_range_in_image) (unw_addr_space_t as, struct elf_image *ei,
+                                               unsigned long segbase, unw_word_t ip,
+                                               unw_word_t *start, unw_word_t *end,
+                                               void *arg);
+
+extern int elf_w (get_elf_filename) (unw_addr_space_t as, pid_t pid, unw_word_t ip,
+                                     char *buf, size_t buf_len, unw_word_t *offp, void *arg);
+
+extern Elf_W (Shdr)* elf_w (find_section) (const struct elf_image *ei, const char* secname);
+extern int elf_w (load_debuginfo) (const char* file, struct elf_image *ei, int is_local);
 
 static inline int
-elf_w (valid_object) (struct elf_image *ei)
+elf_w (valid_object) (const struct elf_image *ei)
 {
   if (ei->size <= EI_VERSION)
     return 0;
@@ -86,16 +101,37 @@ elf_map_image (struct elf_image *ei, const char *path)
     }
 
   ei->size = stat.st_size;
-  ei->image = mmap (NULL, ei->size, PROT_READ, MAP_PRIVATE, fd, 0);
+  ei->image = mi_mmap (NULL, ei->size, PROT_READ, MAP_PRIVATE, fd, 0);
   close (fd);
   if (ei->image == MAP_FAILED)
     return -1;
 
   if (!elf_w (valid_object) (ei))
   {
-    munmap(ei->image, ei->size);
+    mi_munmap(ei->image, ei->size);
+    ei->image = NULL;
     return -1;
   }
 
   return 0;
 }
+
+static inline const uint8_t* elf_w (get_program_segment) (const struct elf_image *ei,
+  const Elf_W (Phdr) *phdr, const uint8_t** end)
+{
+  const uint8_t* result = NULL;
+
+  if (end)
+    *end = NULL;
+
+  if (!ei || !ei->image || !phdr || phdr->p_filesz == 0 || phdr->p_offset > ei->size)
+    return NULL;
+
+  result = ((const uint8_t*)ei->image) + phdr->p_offset;
+  if (end)
+    *end = result + phdr->p_filesz;
+
+  return result;
+}
+
+#endif /* elfxx_h */

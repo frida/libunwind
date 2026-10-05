@@ -34,8 +34,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 */
 	.global _Ux86_64_setcontext
 	.type _Ux86_64_setcontext, @function
-
 _Ux86_64_setcontext:
+	.cfi_startproc
+	_CET_ENDBR
 
 #if defined __linux__ || defined __sun
         /* restore fp state */
@@ -54,6 +55,7 @@ _Ux86_64_setcontext:
 	jne 1f
 	fxrstor UC_MCONTEXT_FPSTATE(%rdi)
 1:
+#elif defined (__QNX__)
 #else
 #error Port me
 #endif
@@ -69,17 +71,43 @@ _Ux86_64_setcontext:
 	mov    UC_MCONTEXT_GREGS_R15(%rdi),%r15
 	mov    UC_MCONTEXT_GREGS_RSI(%rdi),%rsi
 	mov    UC_MCONTEXT_GREGS_RDX(%rdi),%rdx
+
+	/* we must be careful to not read from *%rdi after adjusting %rsp,
+	   so we stash the post-restore RIP and RDI at post-restore RSP */
+	mov    UC_MCONTEXT_GREGS_RSP(%rdi),%rcx
+	mov    UC_MCONTEXT_GREGS_RIP(%rdi),%rax
+	mov    %rax,-0x8(%rcx)
+	mov    UC_MCONTEXT_GREGS_RDI(%rdi),%rax
+	mov    %rax,-0x10(%rcx)
+
 	mov    UC_MCONTEXT_GREGS_RAX(%rdi),%rax
+	/* Pop 2 shadow stack frames:
+
+#0  _Ux86_64_local_resume (as=0x7ffff7fb63c0 <local_addr_space>,
+    cursor=0x7fffffffd7b0, arg=0xf) at x86_64/Gresume.c:58
+#1  0x00007ffff7f9d44b in _Ux86_64_resume (cursor=0x7fffffffd7b0)
+    at x86_64/Gresume.c:123
+#2  0x00000000004007a8 in raise_exception () at Gtest-exc.c:90
+#3  0x00000000004008a2 in b (n=16) at Gtest-exc.c:146
+#4  0x0000000000400818 in a (n=0) at Gtest-exc.c:120
+
+	 */
+	xor	%ecx,%ecx
+	rdsspq	%rcx
+	test	%rcx,%rcx
+	jz	2f
+	mov	$2, %ecx
+	incsspq	%rcx
+
+2:
 	mov    UC_MCONTEXT_GREGS_RCX(%rdi),%rcx
+
+	/* RDI and RIP are waiting for us at RSP-16 */
 	mov    UC_MCONTEXT_GREGS_RSP(%rdi),%rsp
-
-        /* push the return address on the stack */
-	mov    UC_MCONTEXT_GREGS_RIP(%rdi),%rcx
-	push   %rcx
-
-	mov    UC_MCONTEXT_GREGS_RCX(%rdi),%rcx
-	mov    UC_MCONTEXT_GREGS_RDI(%rdi),%rdi
+	sub    $0x10,%rsp
+	pop    %rdi
 	retq
+	.cfi_endproc
 
 	.size _Ux86_64_setcontext, . - _Ux86_64_setcontext
 

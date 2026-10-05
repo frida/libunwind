@@ -27,7 +27,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 # include <sys/elf.h>
 #endif
 
-#include "_UCD_lib.h"
 #include "_UCD_internal.h"
 
 static int
@@ -53,6 +52,9 @@ get_unwind_info(struct UCD_info *ui, unw_addr_space_t as, unw_word_t ip)
        && ip >= ui->edi.di_debug.start_ip && ip < ui->edi.di_debug.end_ip))
     return 0;
 
+  /* The invalidate_edi call unmaps memory it doesn't own, so just null it out
+     instead. */
+  ui->edi.ei.image = NULL;
   invalidate_edi (&ui->edi);
 
   /* Used to be tdep_get_elf_image() in ptrace unwinding code */
@@ -62,17 +64,23 @@ get_unwind_info(struct UCD_info *ui, unw_addr_space_t as, unw_word_t ip)
       Debug(1, "returns error: _UCD_get_elf_image failed\n");
       return -UNW_ENOINFO;
     }
+
+  ucd_file_t *ucd_file = ucd_file_table_at(&ui->ucd_file_table, phdr->p_backing_file_index);
+  if (ucd_file == NULL)
+    {
+      Debug(0, "no backing file for index %d\n", phdr->p_backing_file_index);
+      return -UNW_ENOINFO;
+    }
+
   /* segbase: where it is mapped in virtual memory */
-  /* mapoff: offset in the file */
   segbase = phdr->p_vaddr;
-  /*mapoff  = phdr->p_offset; WRONG! phdr->p_offset is the offset in COREDUMP file */
-  mapoff  = 0;
-///FIXME. text segment is USUALLY, not always, at offset 0 in the binary/.so file.
-// ensure that at initialization.
+  /* mapoff: file offset of this mapping (from NT_FILE), needed to correctly
+   * compute load_base for PIE binaries */
+  mapoff  = phdr->p_mapoff;
 
   /* Here, SEGBASE is the starting-address of the (mmap'ped) segment
      which covers the IP we're looking for.  */
-  if (tdep_find_unwind_table(&ui->edi, as, phdr->backing_filename, segbase, mapoff, ip) < 0)
+  if (tdep_find_unwind_table(&ui->edi, as, ucd_file->filename, segbase, mapoff, ip) < 0)
     {
       Debug(1, "returns error: tdep_find_unwind_table failed\n");
       return -UNW_ENOINFO;
@@ -152,14 +160,22 @@ _UCD_find_proc_info (unw_addr_space_t as, unw_word_t ip, unw_proc_info_t *pi,
                                     pi, need_unwind_info, arg);
 
 #if UNW_TARGET_ARM
-  if (ret == -UNW_ENOINFO && ui->edi.di_arm.format != -1)
-    ret = tdep_search_unwind_table (as, ip, &ui->edi.di_arm, pi,
-                                    need_unwind_info, arg);
-#endif
-
+  /* Try .debug_frame before .ARM.exidx: exidx CANTUNWIND entries cover the
+   * entire range from one function start to the next, so a CANTUNWIND for a
+   * leaf function bleeds into the following non-leaf.  The DWARF .debug_frame
+   * has per-function FDEs and gives the correct result. */
   if (ret == -UNW_ENOINFO && ui->edi.di_debug.format != -1)
     ret = tdep_search_unwind_table (as, ip, &ui->edi.di_debug, pi,
                                     need_unwind_info, arg);
+
+  if (ret == -UNW_ENOINFO && ui->edi.di_arm.format != -1)
+    ret = tdep_search_unwind_table (as, ip, &ui->edi.di_arm, pi,
+                                    need_unwind_info, arg);
+#else
+  if (ret == -UNW_ENOINFO && ui->edi.di_debug.format != -1)
+    ret = tdep_search_unwind_table (as, ip, &ui->edi.di_debug, pi,
+                                    need_unwind_info, arg);
+#endif
 
   Debug(1, "returns %d\n", ret);
 

@@ -27,22 +27,20 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #include <libunwind_i.h>
 
-int
-unw_is_signal_frame (unw_cursor_t * cursor)
+static int
+is_signal_frame (struct cursor *c)
 {
-  struct cursor *c = (struct cursor *) cursor;
-  unw_word_t w0, w1, i0, i1, i2, ip;
+  unw_word_t i0, i1, i2, ip;
   unw_addr_space_t as;
   unw_accessors_t *a;
   void *arg;
   int ret;
 
   as = c->dwarf.as;
-  as->validate = 1;             /* Don't trust the ip */
   arg = c->dwarf.as_arg;
 
   /* Check if return address points at sigreturn sequence.
-     on ppc64 Linux that is (see libc.so):
+     on ppc Linux that is (see libc.so):
      0x38210080  addi r1, r1, 128  // pop the stack
      0x380000ac  li r0, 172        // invoke system service 172
      0x44000002  sc
@@ -52,27 +50,80 @@ unw_is_signal_frame (unw_cursor_t * cursor)
   if (ip == 0)
     return 0;
 
-  /* Read up two 8-byte words at the IP.  We are only looking at 3
-     consecutive 32-bit words, so the second 8-byte word needs to be
-     shifted right by 32 bits (think big-endian) */
+  /* Read three consecutive 32-bit instructions at the IP.
+     On ppc64, access_mem reads 8 bytes, so we extract the two 32-bit
+     halves.  On ppc32, access_mem reads 4 bytes directly.  */
 
   a = unw_get_accessors_int (as);
-  if ((ret = (*a->access_mem) (as, ip, &w0, 0, arg)) < 0
-      || (ret = (*a->access_mem) (as, ip + 8, &w1, 0, arg)) < 0)
+
+#ifdef __powerpc64__
+  {
+    unw_word_t w0, w1;
+    if ((ret = (*a->access_mem) (as, ip, &w0, 0, arg)) < 0
+        || (ret = (*a->access_mem) (as, ip + 8, &w1, 0, arg)) < 0)
+      return 0;
+
+    if (tdep_big_endian (as))
+      {
+        i0 = w0 >> 32;
+        i1 = w0 & 0xffffffffUL;
+        i2 = w1 >> 32;
+      }
+    else
+      {
+        i0 = w0 & 0xffffffffUL;
+        i1 = w0 >> 32;
+        i2 = w1 & 0xffffffffUL;
+      }
+  }
+#else
+  if ((ret = (*a->access_mem) (as, ip, &i0, 0, arg)) < 0
+      || (ret = (*a->access_mem) (as, ip + 4, &i1, 0, arg)) < 0
+      || (ret = (*a->access_mem) (as, ip + 8, &i2, 0, arg)) < 0)
     return 0;
+#endif
 
-  if (tdep_big_endian (as))
-    {
-      i0 = w0 >> 32;
-      i1 = w0 & 0xffffffffUL;
-      i2 = w1 >> 32;
-    }
-  else
-    {
-      i0 = w0 & 0xffffffffUL;
-      i1 = w0 >> 32;
-      i2 = w1 & 0xffffffffUL;
-    }
+  /* Standard RT signal trampoline (__NR_rt_sigreturn = 172):
+       addi r1, r1, 128  (0x38210080)
+       li r0, 172        (0x380000ac)
+       sc                (0x44000002)
 
-  return (i0 == 0x38210080 && i1 == 0x380000ac && i2 == 0x44000002);
+     Standard non-RT signal trampoline (__NR_sigreturn = 119), used on
+     ppc32 when sigaction is called without SA_SIGINFO:
+       addi r1, r1, 64   (0x38210040)
+       li r0, 119        (0x38000077)
+       sc                (0x44000002)
+
+     Some trampolines (e.g. QEMU user-mode) omit the addi and start
+     directly at the li instruction, so check for that pattern too.
+
+     Returns 1 for an RT trampoline, 2 for a non-RT trampoline, 0 for
+     no match.  Callers that only need a yes/no answer can treat any
+     non-zero return as "yes".  */
+  if ((i0 == 0x38210080 && i1 == 0x380000ac && i2 == 0x44000002)
+      || (i0 == 0x380000ac && i1 == 0x44000002))
+    return 1;
+#ifndef __powerpc64__
+  /* ppc64 has no legacy __NR_sigreturn path, so only recognize this on
+     ppc32 to avoid any chance of mismatching unrelated code there.  */
+  if ((i0 == 0x38210040 && i1 == 0x38000077 && i2 == 0x44000002)
+      || (i0 == 0x38000077 && i1 == 0x44000002))
+    return 2;
+#endif
+  return 0;
+}
+
+int
+unw_is_signal_frame (unw_cursor_t * cursor)
+{
+  struct cursor *c = (struct cursor *) cursor;
+  unw_addr_space_t as = c->dwarf.as;
+  int validate = as->validate;
+  int ret;
+
+  as->validate = 1;             /* Don't trust the ip */
+  ret = is_signal_frame (c);
+  as->validate = validate;
+
+  return ret;
 }

@@ -3,17 +3,17 @@
  */
 /*
  This file is part of libunwind.
- 
+
  Permission is hereby granted, free of charge, to any person obtaining a copy of
  this software and associated documentation files (the "Software"), to deal in
  the Software without restriction, including without limitation the rights to
  use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
  of the Software, and to permit persons to whom the Software is furnished to do
  so, subject to the following conditions:
- 
+
  The above copyright notice and this permission notice shall be included in all
  copies or substantial portions of the Software.
- 
+
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -43,60 +43,125 @@
  * containing the mapped file names.  They are ordered correspondingly to each
  * entry in the map structure array.
  */
-typedef struct {
+struct core_nt_file_hdr_s
+{
   unsigned long count;
   unsigned long pagesz;
-} linux_mapinfo_hdr_t;
+};
+typedef struct core_nt_file_hdr_s core_nt_file_hdr_t;
 
-typedef struct {
+struct core_nt_file_entry_s
+{
   unsigned long start;
   unsigned long end;
   unsigned long offset;
-} linux_mapinfo_t;
+};
+typedef struct core_nt_file_entry_s core_nt_file_entry_t;
 
+
+static const char   deleted[] = "(deleted)";
+static const size_t deleted_len = sizeof (deleted) - 1; // -1 removes the \0 like strlen does.
+static const size_t mapinfo_offset = sizeof (core_nt_file_hdr_t);
+
+static int _path_ends_with(const char* path, size_t path_len, const char* match, size_t match_len)
+{
+    if (path_len < match_len) return 0;
+    return memcmp(path + (path_len - match_len), match, match_len) == 0;
+}
 
 /**
- * Map a file note to program headers
+ * Handle the CORE/NT_FILE note type.
+ * @param[in] desc  The note-specific data
+ * @param[in] arg   The user-supplied callback argument
  *
- * If a NT_FILE note is recognized, parse it and add the resulting backing files
- * to the program header list.
+ * The CORE/NT_FILE note type contains a list of start/end virtual addresses
+ * within the core file and an associated filename. The purpose is to map
+ * various segments loaded into memory from ELF files with the ELF file from
+ * which those segments were loaded.
+ *
+ * This function links the file names mapped in the CORE/NT_FILE note with
+ * the program headers in the core file through the UCD_info file table.
  *
  * Any file names that end in the string "(deleted)" are ignored.
  */
 static int
-_handle_file_note(uint32_t n_namesz, uint32_t n_descsz, uint32_t n_type, char *name, uint8_t *desc, void *arg)
+_handle_nt_file_note (uint8_t *desc, void *arg)
 {
   struct UCD_info *ui = (struct UCD_info *)arg;
-#ifdef NT_FILE
-  if (n_type == NT_FILE)
-  {
-    Debug(0, "found a PT_FILE note\n");
-    static const char * deleted = "(deleted)";
-    size_t deleted_len = strlen(deleted);
-    static const size_t mapinfo_offset = sizeof(linux_mapinfo_hdr_t);
 
-    linux_mapinfo_hdr_t *mapinfo = (linux_mapinfo_hdr_t *)desc;
-    linux_mapinfo_t *maps = (linux_mapinfo_t *)(desc + mapinfo_offset);
-    char *strings = (char *)(desc + mapinfo_offset + sizeof(linux_mapinfo_t)*mapinfo->count);
-    for (unsigned long i = 0; i < mapinfo->count; ++i)
+  /* desc may not be naturally aligned (it sits at an odd offset within the
+   * PT_NOTE segment), so use memcpy to read the header and each entry to
+   * avoid SIGBUS on strict-alignment architectures such as SPARC64. */
+  core_nt_file_hdr_t hdr;
+  memcpy (&hdr, desc, sizeof (hdr));
+
+  uint8_t *entries_base = desc + mapinfo_offset;
+  char *strings = (char *) (entries_base + sizeof (core_nt_file_entry_t) * hdr.count);
+
+  for (unsigned long i = 0; i < hdr.count; ++i)
     {
-      size_t len = strlen(strings);
+      core_nt_file_entry_t entry;
+      memcpy (&entry, entries_base + i * sizeof (core_nt_file_entry_t), sizeof (entry));
+
+      size_t len = strlen (strings);
+
       for (unsigned p = 0; p < ui->phdrs_count; ++p)
-      {
-      	if (ui->phdrs[p].p_type == PT_LOAD
-      	  && maps[i].start >= ui->phdrs[p].p_vaddr
-      	  && maps[i].end <= ui->phdrs[p].p_vaddr + ui->phdrs[p].p_filesz)
-	{
-	  if (len > deleted_len && memcmp(strings + len - deleted_len, deleted, deleted_len))
-	  {
-	    _UCD_add_backing_file_at_segment(ui, p, strings);
-	  }
-	  break;
-	}
-      }
+        {
+          if (ui->phdrs[p].p_type == PT_LOAD
+              && entry.start >= ui->phdrs[p].p_vaddr
+              && entry.end <= ui->phdrs[p].p_vaddr + ui->phdrs[p].p_memsz)
+            {
+              if (len > 0 && !_path_ends_with(strings, len, deleted, deleted_len))
+                {
+                  ui->phdrs[p].p_backing_file_index = ucd_file_table_insert (&ui->ucd_file_table, strings);
+                  /* NT_FILE offset is in pages; convert to bytes */
+                  ui->phdrs[p].p_mapoff = entry.offset * hdr.pagesz;
+                  Debug (3, "adding '%s' at index %d (mapoff=0x%lx)\n", strings, ui->phdrs[p].p_backing_file_index, (unsigned long)ui->phdrs[p].p_mapoff);
+                }
+              else
+                {
+                  Debug (3, "ignoring path: '%s', due to (deleted) or len == 0\n", strings);
+                }
+
+              break;
+            }
+        }
+
       strings += (len + 1);
     }
-  }
+
+  return UNW_ESUCCESS;
+}
+
+/**
+ * Callback to handle notes.
+ * @param[in]  n_namesz size of name data
+ * @param[in]  n_descsz size of desc data
+ * @param[in]  n_type type of note
+ * @param[in]  name zero-terminated string, n_namesz bytes plus alignment padding
+ * @param[in]  desc note-specific data, n_descsz bytes plus alignment padding
+ * @param[in]  arg user-supplied callback argument
+ *
+ * Add additional note types here for fun and frolicks. Right now the only note
+ * type handled is the CORE/NT_FILE note used on GNU/Linux. FreeBSD uses a
+ * FreeBSD/NT_PROCSTAT_VMMAP note and QNX uses a QNX/QNT_DEBUG_LINK_MAP note for
+ * similar purposes. Other target OSes probably use something else.
+ *
+ * Note interpretation requires both name and type.
+ */
+static int
+_handle_pt_note_segment (uint32_t  n_namesz UNUSED,
+                         uint32_t  n_descsz UNUSED,
+                         uint32_t  n_type,
+                         char     *name,
+                         uint8_t  *desc,
+                         void     *arg)
+{
+#ifdef NT_FILE
+  if (n_type == NT_FILE && strcmp (name, "CORE") == 0)
+    {
+      return _handle_nt_file_note (desc, arg);
+    }
 #endif
   return UNW_ESUCCESS;
 }
@@ -111,24 +176,25 @@ _handle_file_note(uint32_t n_namesz, uint32_t n_descsz, uint32_t n_type, char *n
  * fail.
  */
 int
-_UCD_get_mapinfo(struct UCD_info *ui, coredump_phdr_t *phdrs, unsigned phdr_size)
+_UCD_get_mapinfo (struct UCD_info *ui, coredump_phdr_t *phdrs, unsigned phdr_size)
 {
   int ret = UNW_ESUCCESS; /* it's OK if there are no file mappings */
 
   for (unsigned i = 0; i < phdr_size; ++i)
-  {
-    if (phdrs[i].p_type == PT_NOTE)
     {
-      uint8_t *segment;
-      size_t segment_size;
-      ret = _UCD_elf_read_segment(ui, &phdrs[i], &segment, &segment_size);
-      if (ret == UNW_ESUCCESS)
-      {
-      	_UCD_elf_visit_notes(segment, segment_size, _handle_file_note, ui);
-      	free(segment);
-      }
+      if (phdrs[i].p_type == PT_NOTE)
+        {
+          uint8_t *segment;
+          size_t segment_size;
+          ret = _UCD_elf_read_segment (ui, &phdrs[i], &segment, &segment_size);
+
+          if (ret == UNW_ESUCCESS)
+            {
+              _UCD_elf_visit_notes (segment, segment_size, _handle_pt_note_segment, ui);
+              free (segment);
+            }
+        }
     }
-  }
 
   return ret;
 }

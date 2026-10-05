@@ -34,12 +34,15 @@ arm_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
 {
 #ifdef __linux__
   struct cursor *c = (struct cursor *) cursor;
-  unw_tdep_context_t *uc = c->dwarf.as_arg;
+  unw_tdep_context_t *uc = c->uc;
 
   if (c->sigcontext_format == ARM_SCF_NONE)
     {
-      /* Since there are no signals involved here we restore the non scratch
-         registers only.  */
+      /* Restore callee-saved registers and branch via LR.
+         r0 and r1 are also restored from the initial context because
+         ARM EHABI exception handling uses _Unwind_SetGR to place the
+         exception object pointer (r0) and filter value (r1) there for
+         C++ landing pads.  */
       unsigned long regs[10];
       regs[0] = uc->regs[4];
       regs[1] = uc->regs[5];
@@ -50,17 +53,21 @@ arm_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
       regs[6] = uc->regs[10];
       regs[7] = uc->regs[11]; /* FP */
       regs[8] = uc->regs[13]; /* SP */
-      regs[9] = uc->regs[15]; /* PC */
+      regs[9] = uc->regs[14]; /* LR */
 
       struct regs_overlay {
               char x[sizeof(regs)];
-      };
+      } MAY_ALIAS;
 
       __asm__ __volatile__ (
+        "ldr r0, %1\n"
+        "ldr r1, %2\n"
         "ldmia %0, {r4-r12, lr}\n"
         "mov sp, r12\n"
         "bx lr\n"
         : : "r" (regs),
+            "m" (uc->regs[0]),
+            "m" (uc->regs[1]),
             "m" (*(struct regs_overlay *)regs)
       );
     }
@@ -97,9 +104,6 @@ arm_local_resume (unw_addr_space_t as, unw_cursor_t *cursor, void *arg)
       );
    }
   unreachable();
-#elif defined(__QNX__)
-  /* FIXME: Implement for QNX. */
-  unreachable ();
 #else
   printf ("%s: implement me\n", __FUNCTION__);
 #endif

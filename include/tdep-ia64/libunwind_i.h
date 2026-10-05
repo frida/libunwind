@@ -97,6 +97,9 @@ struct unw_addr_space
     struct unw_accessors acc;
     int big_endian;
     int abi;    /* abi < 0 => unknown, 0 => SysV, 1 => HP-UX, 2 => Windows */
+#ifndef UNW_REMOTE_ONLY
+    unw_iterate_phdr_func_t iterate_phdr_function;
+#endif
     unw_caching_policy_t caching_policy;
     _Atomic uint32_t cache_generation;
     unw_word_t dyn_generation;
@@ -116,7 +119,7 @@ struct unw_addr_space
 #define ABI_MARKER_LINUX_SIGTRAMP       ((3 << 8) | 's')
 #define ABI_MARKER_LINUX_INTERRUPT      ((3 << 8) | 'i')
 
-struct cursor
+struct MAY_ALIAS cursor
   {
     void *as_arg;               /* argument to address-space callbacks */
     unw_addr_space_t as;        /* reference to per-address-space info */
@@ -152,7 +155,7 @@ struct cursor
     unsigned int pi_is_dynamic :1; /* proc_info found via dynamic proc info? */
     unw_proc_info_t pi;         /* info about current procedure */
 
-    /* In case of stack-discontiguities, such as those introduced by
+    /* In case of stack discontiguities, such as those introduced by
        signal-delivery on an alternate signal-stack (see
        sigaltstack(2)), we use the following data-structure to keep
        track of the register-backing-store areas across on which the
@@ -258,9 +261,10 @@ extern void tdep_put_unwind_info (unw_addr_space_t as,
                                   unw_proc_info_t *pi, void *arg);
 extern void *tdep_uc_addr (ucontext_t *uc, unw_regnum_t regnum,
                            uint8_t *nat_bitnr);
-extern int tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
+extern int tdep_get_elf_image (unw_addr_space_t as, struct elf_image *ei, pid_t pid, unw_word_t ip,
                                unsigned long *segbase, unsigned long *mapoff,
-                               char *path, size_t pathlen);
+                               char *path, size_t pathlen,
+                               void *arg);
 extern void tdep_get_exe_image_path (char *path);
 extern int tdep_access_reg (struct cursor *c, unw_regnum_t reg,
                             unw_word_t *valp, int write);

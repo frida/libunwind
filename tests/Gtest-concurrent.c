@@ -36,11 +36,13 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <errno.h>
+#include <string.h>
 
 #define NTHREADS	128
 
-#define panic(args...)						\
-	do { fprintf (stderr, args); ++nerrors; } while (0)
+#define panic(...)						\
+	do { fprintf (stderr, __VA_ARGS__); ++nerrors; } while (0)
 
 int verbose;
 int nerrors;
@@ -48,12 +50,12 @@ int got_usr1, got_usr2;
 char *sigusr1_sp;
 
 void
-handler (int sig UNUSED)
+handler (int sig UNUSED, siginfo_t *siginfo UNUSED, void *context UNUSED)
 {
   unw_word_t ip;
   unw_context_t uc;
   unw_cursor_t c;
-  int ret;
+  int ret, num_frames = 0;
 
   unw_getcontext (&uc);
   unw_init_local (&c, &uc);
@@ -62,17 +64,30 @@ handler (int sig UNUSED)
       unw_get_reg (&c, UNW_REG_IP, &ip);
       if (verbose)
 	printf ("%lx: IP=%lx\n", (long) pthread_self (), (unsigned long) ip);
+      ++num_frames;
     }
   while ((ret = unw_step (&c)) > 0);
 
+#ifdef UNW_TARGET_ARM
+  if (ret == -UNW_ESTOPUNWIND)
+    return;
+#endif
   if (ret < 0)
     panic ("unw_step() returned %d\n", ret);
+
+  if (num_frames < 3)
+    panic ("FAILURE: only found %d frames\n", num_frames);
 }
 
 void *
 worker (void *arg UNUSED)
 {
-  signal (SIGUSR1, handler);
+  struct sigaction act;
+  memset (&act, 0, sizeof (act));
+  act.sa_sigaction = handler;
+  act.sa_flags = SA_SIGINFO;
+  if (sigaction (SIGUSR1, &act, NULL) < 0)
+    panic ("sigaction: %s\n", strerror (errno));
 
   if (verbose)
     printf ("sending SIGUSR1\n");

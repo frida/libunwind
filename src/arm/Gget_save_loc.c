@@ -53,6 +53,25 @@ unw_get_save_loc (unw_cursor_t *cursor, int reg, unw_save_loc_t *sloc)
       loc = c->dwarf.loc[reg - UNW_ARM_R0];
       break;
 
+    case UNW_ARM_D0:
+    case UNW_ARM_D1:
+    case UNW_ARM_D2:
+    case UNW_ARM_D3:
+    case UNW_ARM_D4:
+    case UNW_ARM_D5:
+    case UNW_ARM_D6:
+    case UNW_ARM_D7:
+    case UNW_ARM_D8:
+    case UNW_ARM_D9:
+    case UNW_ARM_D10:
+    case UNW_ARM_D11:
+    case UNW_ARM_D12:
+    case UNW_ARM_D13:
+    case UNW_ARM_D14:
+    case UNW_ARM_D15:
+      loc = c->dwarf.loc[UNW_ARM_S0 + (reg - UNW_ARM_D0)];
+      break;
+
     default:
       break;
     }
@@ -69,13 +88,13 @@ unw_get_save_loc (unw_cursor_t *cursor, int reg, unw_save_loc_t *sloc)
   if (DWARF_IS_REG_LOC (loc))
     {
       sloc->type = UNW_SLT_REG;
-      sloc->u.regnum = DWARF_GET_LOC (loc);
+      sloc->u.regnum = DWARF_GET_REG_LOC (loc);
     }
   else
 #endif
     {
       sloc->type = UNW_SLT_MEMORY;
-      sloc->u.addr = DWARF_GET_LOC (loc);
+      sloc->u.addr = DWARF_GET_MEM_LOC (loc);
     }
   return 0;
 }

@@ -31,11 +31,34 @@ unw_step (unw_cursor_t *cursor)
 {
   struct cursor *c = (struct cursor *) cursor;
   int ret, i;
+  int validate = c->validate;
+  c->validate = 1;
 
   Debug (1, "(cursor=%p, ip=0x%08x)\n", c, (unsigned) c->dwarf.ip);
 
+  /*
+   * Special-case the signal trampoline since on many OS targets it lacks DWARF
+   * unwind info.
+   */
+  if (unw_is_signal_frame (cursor) > 0)
+    {
+      ret = x86_handle_signal_frame(cursor);
+      if (ret >= 0)
+        ret = dwarf_get (&c->dwarf, c->dwarf.loc[EIP], &c->dwarf.ip);
+      c->dwarf.pi_valid = 0;
+      c->validate = validate;
+      if (ret < 0)
+        {
+          Debug (2, "returning %d\n", ret);
+          return ret;
+        }
+      return (c->dwarf.ip == 0) ? 0 : 1;
+    }
+
   /* Try DWARF-based unwinding... */
+  c->sigcontext_format = X86_SCF_NONE;
   ret = dwarf_step (&c->dwarf);
+  c->validate = validate;
 
   if (ret < 0 && ret != -UNW_ENOINFO)
     {
@@ -45,53 +68,45 @@ unw_step (unw_cursor_t *cursor)
 
   if (unlikely (ret < 0))
     {
-      /* DWARF failed, let's see if we can follow the frame-chain
-         or skip over the signal trampoline.  */
+      /* DWARF failed, let's see if we can follow the frame-chain.  This is
+         guesswork: without unwind info there is nothing that says EBP holds
+         a frame pointer here, so a read that fails means the guess was
+         wrong, not that the target is broken.  Report the end of the stack
+         rather than an error in that case, as there is nowhere left to go
+         either way.  */
       struct dwarf_loc ebp_loc, eip_loc, esp_loc;
 
-      /* We could get here because of missing/bad unwind information.
-         Validate all addresses before dereferencing. */
-      c->validate = 1;
 
       Debug (13, "dwarf_step() failed (ret=%d), trying frame-chain\n", ret);
 
-      if (unw_is_signal_frame (cursor) > 0)
+      ret = dwarf_get (&c->dwarf, c->dwarf.loc[EBP], &c->dwarf.cfa);
+      if (ret < 0)
         {
-          ret = x86_handle_signal_frame(cursor);
-          if (ret < 0)
-            {
-              Debug (2, "returning 0\n");
-              return 0;
-            }
+          Debug (13, "dwarf_get([EBP=0x%x]) failed\n", DWARF_GET_LOC (c->dwarf.loc[EBP]));
+          Debug (2, "returning 0\n");
+          return 0;
         }
-      else
+
+      Debug (13, "[EBP=0x%x] = 0x%x\n", DWARF_GET_LOC (c->dwarf.loc[EBP]), c->dwarf.cfa);
+
+      ebp_loc = DWARF_LOC (c->dwarf.cfa, 0);
+      esp_loc = DWARF_VAL_LOC (c, c->dwarf.cfa + 8);
+      eip_loc = DWARF_LOC (c->dwarf.cfa + 4, 0);
+      c->dwarf.cfa += 8;
+
+      /*
+       * Mark all registers unsaved, since we don't know where they are saved
+       * (if at all), except for the EBP and EIP.
+       */
+      for (i = 0; i < DWARF_NUM_PRESERVED_REGS; ++i)
         {
-          ret = dwarf_get (&c->dwarf, c->dwarf.loc[EBP], &c->dwarf.cfa);
-          if (ret < 0)
-            {
-              Debug (2, "returning %d\n", ret);
-              return ret;
-            }
-
-          Debug (13, "[EBP=0x%x] = 0x%x\n", DWARF_GET_LOC (c->dwarf.loc[EBP]),
-                 c->dwarf.cfa);
-
-          ebp_loc = DWARF_LOC (c->dwarf.cfa, 0);
-          esp_loc = DWARF_VAL_LOC (c, c->dwarf.cfa + 8);
-          eip_loc = DWARF_LOC (c->dwarf.cfa + 4, 0);
-          c->dwarf.cfa += 8;
-
-          /* Mark all registers unsaved, since we don't know where
-             they are saved (if at all), except for the EBP and
-             EIP.  */
-          for (i = 0; i < DWARF_NUM_PRESERVED_REGS; ++i)
-            c->dwarf.loc[i] = DWARF_NULL_LOC;
-
-          c->dwarf.loc[EBP] = ebp_loc;
-          c->dwarf.loc[ESP] = esp_loc;
-          c->dwarf.loc[EIP] = eip_loc;
-          c->dwarf.use_prev_instr = 1;
+          c->dwarf.loc[i] = DWARF_NULL_LOC;
         }
+
+      c->dwarf.loc[EBP] = ebp_loc;
+      c->dwarf.loc[ESP] = esp_loc;
+      c->dwarf.loc[EIP] = eip_loc;
+      c->dwarf.use_prev_instr = 1;
 
       if (!DWARF_IS_NULL_LOC (c->dwarf.loc[EBP]))
         {
@@ -99,8 +114,7 @@ unw_step (unw_cursor_t *cursor)
           if (ret < 0)
             {
               Debug (13, "dwarf_get([EIP=0x%x]) failed\n", DWARF_GET_LOC (c->dwarf.loc[EIP]));
-              Debug (2, "returning %d\n", ret);
-              return ret;
+              c->dwarf.ip = 0;
             }
           else
             {

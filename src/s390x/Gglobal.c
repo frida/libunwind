@@ -76,26 +76,27 @@ HIDDEN void
 tdep_init (void)
 {
   intrmask_t saved_mask;
+  intrmask_t full_mask;
+  sigfillset (&full_mask);
 
-  sigfillset (&unwi_full_mask);
-
-  lock_acquire (&s390x_lock, saved_mask);
+  SIGPROCMASK (SIG_SETMASK, &full_mask, &saved_mask);
+  mutex_lock (&s390x_lock);
   {
     if (atomic_load(&tdep_init_done))
       /* another thread else beat us to it... */
       goto out;
 
+    sigfillset (&unwi_full_mask);
     mi_init ();
 
     dwarf_init ();
 
 #ifndef UNW_REMOTE_ONLY
-    tdep_init_mem_validate ();
-
     s390x_local_addr_space_init ();
 #endif
     atomic_store(&tdep_init_done, 1); /* signal that we're initialized... */
   }
  out:
-  lock_release (&s390x_lock, saved_mask);
+  mutex_unlock (&s390x_lock);
+  SIGPROCMASK (SIG_SETMASK, &saved_mask, NULL);
 }

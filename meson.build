@@ -1,338 +1,461 @@
-project('libunwind', 'c',
-  version: '1.6-rc1',
-  default_options: [
-    'c_std=gnu99',
-  ],
+project(
+    'libunwind',
+    'c',
+    'cpp',
+    version: '1.9.0-pre',
+    meson_version: '>=0.61.0',
+    default_options: ['b_ndebug=if-release', 'c_std=c11', 'cpp_std=c++11'],
 )
 
-os_from_meson = {
-  'android': 'linux',
-}
-
-arch_from_meson = {
-  'parisc': 'hppa',
-  'mips64': 'mips',
-  'riscv32': 'riscv',
-  'riscv64': 'riscv',
-  'ppc': 'ppc32',
-  'sh4': 'sh',
-}
-
-host_os = host_machine.system()
-host_os = os_from_meson.get(host_os, host_os)
-host_arch = host_machine.cpu_family()
-host_arch = arch_from_meson.get(host_arch, host_arch)
-
-target_os = target_machine.system()
-target_os = os_from_meson.get(target_os, target_os)
-target_arch = target_machine.cpu_family()
-target_arch = arch_from_meson.get(target_arch, target_arch)
-
-lt_cur = 8
-lt_rev = 1
-lt_age = 0
-
-if host_os in ['hpux', 'netbsd', 'openbsd', 'sunos']
-  unwind_version = '@0@.@1@'.format(lt_cur, lt_rev)
-  default_version = '0.0'
-elif host_os == 'qnx'
-  unwind_version = lt_cur.to_string()
-  default_version = '0'
-else
-  unwind_version = '@0@.@1@.@2@'.format(lt_cur - lt_age, lt_age, lt_rev)
-  default_version = '0.0.0'
-endif
-
-coredump_version = default_version
-ptrace_version = default_version
-setjmp_version = default_version
-
-add_project_arguments(
-  '-DHAVE_CONFIG_H',
-  '-D_GNU_SOURCE',
-  language: 'c')
-
+fs = import('fs')
+pkg = import('pkgconfig')
 cc = meson.get_compiler('c')
+cpp = meson.get_compiler('cpp')
 
-host_is_prospero = host_os == 'freebsd' and cc.get_define('__PROSPERO__') != ''
+cfg = configuration_data()
 
-# Suppress all compiler warnings when we're a subproject
-if meson.is_subproject()
-  if cc.get_argument_syntax() == 'msvc'
-    add_project_arguments('/w', language : 'c')
-  else
-    add_project_arguments('-w', language : 'c')
-  endif
-endif
-
-cdata = configuration_data()
-
-cdata.set('arch', target_arch)
-
-project_name = meson.project_name()
-project_version = meson.project_version()
-cdata.set_quoted('PACKAGE', project_name)
-cdata.set_quoted('PACKAGE_NAME', project_name)
-cdata.set_quoted('PACKAGE_TARNAME', project_name)
-cdata.set_quoted('PACKAGE_VERSION', project_version)
-cdata.set('PKG_MAJOR', 1)
-cdata.set('PKG_MINOR', 6)
-cdata.set('PKG_EXTRA', '-rc1')
-cdata.set_quoted('VERSION', project_version)
-cdata.set_quoted('PACKAGE_STRING', project_name + ' ' + project_version)
-cdata.set_quoted('PACKAGE_URL', '')
-cdata.set_quoted('PACKAGE_BUGREPORT', 'libunwind-devel@nongnu.org')
-
-cdata.set('STDC_HEADERS', 1)
-
-system_headers = [
-  'asm/ptrace.h',
-  'asm/ptrace_offsets.h',
-  'byteswap.h',
-  'dlfcn.h',
-  'elf.h',
-  'endian.h',
-  'execinfo.h',
-  'ia64intrin.h',
-  'inttypes.h',
-  'link.h',
-  'memory.h',
-  'signal.h',
-  'stdalign.h',
-  'stdatomic.h',
-  'stdint.h',
-  'stdlib.h',
-  'string.h',
-  'strings.h',
-  'sys/elf.h',
-  'sys/endian.h',
-  'sys/link.h',
-  'sys/param.h',
-  'sys/procfs.h',
-  'sys/ptrace.h',
-  'sys/stat.h',
-  'sys/syscall.h',
-  'sys/types.h',
-  'sys/uc_access.h',
-  'unistd.h',
-]
-foreach h : system_headers
-  if cc.check_header(h)
-    cdata.set('HAVE_' + h.underscorify().to_upper(), 1)
-  endif
-endforeach
-
-cdata.set('SIZEOF_OFF_T', cc.sizeof('off_t'))
-
-if cc.has_type('struct dl_phdr_info',
-               args: ['-D_GNU_SOURCE=1'],
-               prefix: '''#if @0@
-                          #include <link.h>
-                          #endif
-                          #if @1@
-                          #include <sys/link.h>
-                          #endif'''.format(cdata.has('HAVE_LINK_H').to_int(),
-                                           cdata.has('HAVE_SYS_LINK_H').to_int()))
-  cdata.set('HAVE_STRUCT_DL_PHDR_INFO', 1)
-endif
-
-if cc.has_member('struct dl_phdr_info', 'dlpi_subs',
-                 args: ['-D_GNU_SOURCE=1'],
-                 prefix: '#include <link.h>')
-  cdata.set('HAVE_STRUCT_DL_PHDR_INFO_DLPI_SUBS', 1)
-endif
-
-prstatus_types = [
-  'struct elf_prstatus',
-  'struct prstatus',
-]
-prstatus_prefix = '''#if @0@
-                     # include <sys/procfs.h>
-                     #endif'''.format(cdata.has('HAVE_SYS_PROCFS_H').to_int())
-foreach t : prstatus_types
-  if cc.has_type(t, prefix: prstatus_prefix)
-    cdata.set('HAVE_' + t.underscorify().to_upper(), 1)
-  endif
-endforeach
-
-ptrace_decls = [
-  'PTRACE_POKEUSER',
-  'PTRACE_POKEDATA',
-  'PTRACE_SETREGSET',
-  'PTRACE_TRACEME',
-  'PTRACE_CONT',
-  'PTRACE_SINGLESTEP',
-  'PTRACE_SYSCALL',
-  'PT_IO',
-  'PT_GETREGS',
-  'PT_GETFPREGS',
-  'PT_CONTINUE',
-  'PT_TRACE_ME',
-  'PT_STEP',
-  'PT_SYSCALL',
-]
-ptrace_prefix = '''#if @0@
-                   # include <sys/types.h>
-                   #endif'''.format(cdata.has('HAVE_SYS_TYPES_H').to_int())
-foreach d : ptrace_decls
-  cdata.set10('HAVE_DECL_' + d, cc.has_header_symbol('sys/ptrace.h', d, prefix: ptrace_prefix))
-endforeach
-
-dl_dep = cc.find_library('dl', required: false)
-
-library_funcs = [
-  'dl_iterate_phdr',
-  'dl_phdr_removals_counter',
-  'dlmodinfo',
-  'getunwind',
-  'mincore',
-  'pipe2',
-  'ttrace',
-]
-foreach f : library_funcs
-  if cc.has_function(f)
-    cdata.set('HAVE_' + f.to_upper(), 1)
-  endif
-endforeach
-
-archs_where_coredump_works_well = [
-  'aarch64', 'arm', 'mips', 'sh', 'x86', 'x86_64',
-  'tilegx', 'riscv', 'loongarch64'
-]
-enable_coredump = get_option('coredump_library') \
-    .disable_auto_if(host_arch not in archs_where_coredump_works_well) \
-    .allowed()
-message('Should build libunwind-coredump :', enable_coredump.to_string('YES', 'NO'))
-
-enable_ptrace = get_option('ptrace_library') \
-    .disable_auto_if(not cdata.has('HAVE_SYS_PTRACE_H')) \
-    .allowed()
-message('Should build libunwind-ptrace :', enable_ptrace.to_string('YES', 'NO'))
-
-enable_setjmp = get_option('setjmp_library') \
-    .disable_auto_if(target_arch != host_arch) \
-    .allowed()
-message('Should build libunwind-setjmp :', enable_setjmp.to_string('YES', 'NO'))
-
-if get_option('weak_backtrace')
-  cdata.set('CONFIG_WEAK_BACKTRACE', 1)
-endif
-
-if target_arch in ['arm', 'hppa', 'ppc32', 'x86', 'sh']
-  elf_helper_width = '32'
-elif target_arch in ['aarch64', 'ia64', 'ppc64', 'x86_64', 's390x', 'tilegx']
-  elf_helper_width = '64'
-elif target_arch in ['mips', 'riscv', 'loongarch64']
-  elf_helper_width = 'xx'
-else
-  error('Unknown ELF target:', target_arch)
-endif
-message('ELF helper width :', elf_helper_width)
-
-use_dwarf = target_arch != 'ia64'
-message('Include DWARF support :', use_dwarf.to_string('YES', 'NO'))
-
-remote_only = target_arch != host_arch
-message('Restrict build to remote support :', remote_only.to_string('YES', 'NO'))
-if remote_only
-  add_project_arguments('-DUNW_REMOTE_ONLY', language: 'c')
-endif
-
-ndebug = get_option('b_ndebug')
-optimize_for_prod = ndebug == 'true' or (ndebug == 'if-release' and not get_option('debug'))
-enable_debug = get_option('unwind_debug').disable_auto_if(optimize_for_prod).allowed()
-message('Debug support :', enable_debug.to_string('YES', 'NO'))
-if enable_debug
-  add_project_arguments('-DDEBUG', language: 'c')
-endif
-
-archs_where_cxx_eh_does_not_work_well = [
-  'x86',
-  'x86_64',
-  'aarch64',
-  'arm',
-  'mips',
-  'mips64',
-  'tilegx',
-  's390x',
-  'loongarch64',
-]
-enable_cxx_exceptions = get_option('cxx_exceptions') \
-    .disable_auto_if(target_arch in archs_where_cxx_eh_does_not_work_well) \
-    .allowed()
-message('C++ exception support :', enable_cxx_exceptions.to_string('YES', 'NO'))
-
-enable_debug_frame = get_option('debug_frame') \
-    .disable_auto_if(target_arch not in ['arm', 'aarch64']) \
-    .allowed()
-if remote_only
-  enable_debug_frame = false
-endif
-message('Load .debug_frame sections :', enable_debug_frame.to_string('YES', 'NO'))
-if enable_debug_frame
-  cdata.set('CONFIG_DEBUG_FRAME', '/**/')
-endif
-
-block_signals = get_option('block_signals')
-message('Block signals during mutex ops :', block_signals.to_string('YES', 'NO'))
-if block_signals
-  cdata.set('CONFIG_BLOCK_SIGNALS', '/**/')
-endif
-
-conservative_checks = get_option('conservative_checks')
-message('Validate memory addresses before use :', conservative_checks.to_string('YES', 'NO'))
-if conservative_checks
-  cdata.set('CONSERVATIVE_CHECKS', 1)
-endif
-
-msabi_support = get_option('msabi_support')
-message('Microsoft ABI extensions support :', msabi_support.to_string('YES', 'NO'))
-if msabi_support
-  cdata.set('CONFIG_MSABI_SUPPORT', '/**/')
-endif
-
-lzma_dep = dependency('liblzma',
-                      required: get_option('minidebuginfo'),
-                      not_found_message: 'Disabling support for LZMA-compressed symbol tables')
-if lzma_dep.found()
-  cdata.set('HAVE_LZMA', 1)
-endif
-
-zlib_dep = dependency('zlib',
-                      required: get_option('zlibdebuginfo'),
-                      not_found_message: 'Disabling support for ZLIB-compressed symbol tables')
-if zlib_dep.found()
-  cdata.set('HAVE_ZLIB', 1)
-endif
-
-per_thread_cache = get_option('per_thread_cache')
-message('Enable UNW_CACHE_PER_THREAD :', per_thread_cache.to_string('YES', 'NO'))
-if per_thread_cache
-  cdata.set('HAVE___CACHE_PER_THREAD', 1)
-endif
-
-libcrts = []
-if cc.get_id() == 'gcc'
-  libcrts += '-lgcc_s'
-endif
-
-if cc.has_function('__builtin___clear_cache')
-  cdata.set('HAVE__BUILTIN___CLEAR_CACHE', 1)
-endif
-
-if cc.has_function('__builtin_unreachable')
-  cdata.set('HAVE__BUILTIN_UNREACHABLE', 1)
-endif
-
-libunwind_public_incdirs = include_directories('include' / 'public')
-libunwind_internal_incdirs = include_directories(
-  'include' / 'public',
-  'include',
-  'include' / 'tdep-' + target_arch,
-  'include' / 'tdep',
-  'src',
+# Set basic parameters of the build
+cfg.set_quoted('PACKAGE', meson.project_name())
+cfg.set_quoted('PACKAGE_NAME', meson.project_name())
+cfg.set_quoted('PACKAGE_TARNAME', meson.project_name())
+cfg.set_quoted(
+    'PACKAGE_BUGREPORT',
+    'https://github.com/libunwind/libunwind/issues',
 )
-libunwind_deps = [dl_dep, lzma_dep, zlib_dep]
+cfg.set_quoted('PACKAGE_URL', 'https://github.com/libunwind/libunwind')
+cfg.set_quoted(
+    'PACKAGE_STRING',
+    '@0@ @1@'.format(meson.project_name(), meson.project_version()),
+)
+cfg.set_quoted('PACKAGE_VERSION', meson.project_version())
+
+# Sizes
+cfg.set('SIZEOF_OFF_T', cc.sizeof('off_t', prefix: '#include <sys/types.h>'))
+
+# Header presence checks
+if cc.has_header('asm/ptrace_offsets.h')
+    cfg.set('HAVE_ASM_PTRACE_OFFSETS_H', 1)
+endif
+if cc.has_header('asm/ptrace.h')
+    cfg.set('HAVE_ASM_PTRACE_H', 1)
+endif
+if cc.has_header('asm/vsyscall.h')
+    cfg.set('HAVE_ASM_VSYSCALL_H', 1)
+endif
+if cc.has_header('endian.h')
+    cfg.set('HAVE_ENDIAN_H', 1)
+endif
+if cc.has_header('sys/endian.h')
+    cfg.set('HAVE_SYS_ENDIAN_H', 1)
+endif
+if cc.has_header('sys/param.h')
+    cfg.set('HAVE_SYS_PARAM_H', 1)
+endif
+if cc.has_header('execinfo.h')
+    cfg.set('HAVE_EXECINFO_H', 1)
+endif
+if cc.has_header('ia64intrin.h')
+    cfg.set('HAVE_IA64INTRIN_H', 1)
+endif
+if cc.has_header('sys/uc_access.h')
+    cfg.set('HAVE_SYS_UC_ACCESS_H', 1)
+endif
+if cc.has_header('unistd.h')
+    cfg.set('HAVE_UNISTD_H', 1)
+endif
+if cc.has_header('signal.h')
+    cfg.set('HAVE_SIGNAL_H', 1)
+endif
+if cc.has_header('sys/types.h')
+    cfg.set('HAVE_SYS_TYPES_H', 1)
+endif
+if cc.has_header('sys/procfs.h')
+    cfg.set('HAVE_SYS_PROCFS_H', 1)
+endif
+if cc.has_header('sys/ptrace.h')
+    cfg.set('HAVE_SYS_PTRACE_H', 1)
+endif
+if cc.has_header('sys/syscall.h')
+    cfg.set('HAVE_SYS_SYSCALL_H', 1)
+endif
+if cc.has_header('byteswap.h')
+    cfg.set('HAVE_BYTESWAP_H', 1)
+endif
+if cc.has_header('elf.h')
+    cfg.set('HAVE_ELF_H', 1)
+endif
+if cc.has_header('sys/elf.h')
+    cfg.set('HAVE_SYS_ELF_H', 1)
+endif
+if cc.has_header('link.h')
+    cfg.set('HAVE_LINK_H', 1)
+endif
+if cc.has_header('sys/link.h')
+    cfg.set('HAVE_SYS_LINK_H', 1)
+endif
+if cc.has_header('threads.h')
+    cfg.set('HAVE_THREADS_H', 1)
+endif
+
+# Type checks
+cfg.set(
+    'HAVE_STRUCT_DL_PHDR_INFO_DLPI_SUBS',
+    cc.has_member(
+        'struct dl_phdr_info',
+        'dlpi_subs',
+        prefix: '#include <link.h>',
+    ) ? 1 : false,
+)
+if cc.has_type('struct elf_prstatus', prefix: '#include <sys/procfs.h>')
+    cfg.set('HAVE_STRUCT_ELF_PRSTATUS', 1)
+endif
+if cc.has_type('struct prstatus', prefix: '#include <sys/procfs.h>')
+    cfg.set('HAVE_STRUCT_PRSTATUS', 1)
+endif
+if cc.has_type('procfs_status', prefix: '#include <sys/procfs.h>')
+    cfg.set('HAVE_PROCFS_STATUS', 1)
+endif
+if cc.has_type('elf_fpregset_t', prefix: '#include <sys/procfs.h>')
+    cfg.set('HAVE_ELF_FPREGSET_T', 1)
+endif
+
+# Function checks
+if cc.has_function(
+    'dl_iterate_phdr',
+    args: '-D_GNU_SOURCE',
+    prefix: '#include <link.h>',
+)
+    cfg.set('HAVE_DL_ITERATE_PHDR', 1)
+endif
+if cc.has_function('dl_phdr_removals_counter')
+    cfg.set('HAVE_DL_PHDR_REMOVALS_COUNTER', 1)
+endif
+if cc.has_function('dlmodinfo')
+    cfg.set('HAVE_DLMODINFO', 1)
+endif
+if cc.has_function('getunwind')
+    cfg.set('HAVE_GETUNWIND', 1)
+endif
+if cc.has_function('ttrace')
+    cfg.set('HAVE_TTRACE', 1)
+endif
+if cc.has_function('mincore', prefix: '#include <sys/mman.h>')
+    cfg.set('HAVE_MINCORE', 1)
+endif
+if cc.has_function('pipe2', prefix: '#include <unistd.h>')
+    cfg.set('HAVE_PIPE2', 1)
+endif
+if cc.has_function('sigaltstack', prefix: '#include <signal.h>')
+    cfg.set('HAVE_SIGALTSTACK', 1)
+endif
+if cc.has_function('execvpe', prefix: '#include <unistd.h>')
+    cfg.set('HAVE_EXECVPE', 1)
+endif
+
+# Compiler checks
+if cc.compiles(
+    'int main() { __builtin___clear_cache(0, 0); }',
+    name: 'has __builtin___clear_cache',
+)
+    cfg.set('HAVE__BUILTIN___CLEAR_CACHE', 1)
+endif
+if cc.compiles(
+    'int main() { __builtin_unreachable(); }',
+    name: 'has __builtin_unreachable',
+)
+    cfg.set('HAVE__BUILTIN_UNREACHABLE', 1)
+endif
+
+# Enable non-standard C functions
+if target_machine.system() in ['linux', 'hpux', 'freebsd', 'qnx']
+    add_project_arguments('-D_GNU_SOURCE', language: ['c', 'cpp'])
+elif target_machine.system() == 'sunos'
+    add_project_arguments('-D__EXTENSIONS__', language: 'c')
+endif
+
+
+# Ensure PT_GNU_EH_FRAME is emitted so libunwind can locate .eh_frame data via
+# dl_iterate_phdr. GCC enables -fasynchronous-unwind-tables automatically at
+# -O2+, but not at -O0 (the Meson debug default). Without it the MIPS (and
+# some other) linker never creates the PT_GNU_EH_FRAME program header, causing
+# unw_step to stop after one frame.
+add_project_arguments(
+    cc.get_supported_arguments('-fasynchronous-unwind-tables'),
+    language: ['c', 'cpp'],
+)
+
+# Intel CET support: enable if the compiler has CET on by default or if forced
+_cet_flags = ['-mshstk', '-fcf-protection']
+_cet_on_by_default = not cc.compiles('''
+    #if defined(__x86_64__) && defined(__CET__)
+    # error CET is on by default
+    #endif
+    int x;
+    ''', name: 'CET not enabled by default')
+if _cet_on_by_default and cc.has_multi_arguments(_cet_flags)
+    add_project_arguments(_cet_flags, language: ['c', 'cpp'])
+    add_project_link_arguments('-Wl,-z,cet-report=error', language: ['c', 'cpp'])
+endif
+
+# While all builds support a "remote" libunwind (i.e. unwinding a separate process), not all
+# systems support a "local" libunwind (i.e. monitoring itself). Determine if the local build is
+# possible and if not set UNW_REMOTE_ONLY to optimize away some details that only matter for that.
+unw_remote_only = host_machine.cpu_family() != target_machine.cpu_family() or host_machine.system() not in [
+    'linux',
+    'hpux',
+    'freebsd',
+    'sunos',
+    'qnx',
+]
+if unw_remote_only
+    add_project_arguments('-DUNW_REMOTE_ONLY', language: ['c', 'cpp'])
+endif
+
+# Ensure _Unwind_Resume is available in all cases (i.e. as if it came from libc)
+libc_deps = []
+if not cc.has_function('_Unwind_Resume')
+    _found = false
+    foreach _libname : ['gcc_s', 'gcc']
+        _candidate = cc.find_library(_libname, required: false)
+        if cc.has_function('_Unwind_Resume', dependencies: _candidate)
+            libc_deps += _candidate
+            break
+        endif
+    endforeach
+    if not _found and not unw_remote_only
+        error('Local build unavailable, unable to find required _Unwind_Resume')
+    endif
+endif
+
+# Ensure getcontext is available in all cases (i.e. as if it came from libc)
+if not cc.has_function('getcontext')
+    libc_deps += dependency('libucontext', required: not unw_remote_only)
+endif
+
+# Determine whether to build libunwind-coredump
+build_coredump = get_option('coredump').require(
+    host_machine.system() != 'windows',
+    error_message: 'not supported on windows',
+).require(
+    host_machine.cpu_family() in [
+        'aarch64',
+        'alpha',
+        'arm',
+        # Meson calls hppa "parisc"; see src/meson.build, which gets this right.
+        'parisc',
+        'mips',
+        'mips64',
+        'ppc',
+        'ppc64',
+        's390x',
+        'sh4',
+        'sparc64',
+        'x86',
+        'x86_64',
+        'riscv32',
+        'riscv64',
+        'loongarch64',
+    ],
+    error_message: 'only supported on certain architectures',
+).allowed()
+
+# Determine whether to build libunwind-ptrace
+build_ptrace = get_option('ptrace').require(
+    cfg.has('HAVE_SYS_PTRACE_H'),
+    error_message: 'requires <sys/ptrace.h>',
+).allowed()
+
+# Extra constant checks if we're building libunwind-ptrace
+if build_ptrace
+    if cc.has_header_symbol('sys/ptrace.h', 'PTRACE_POKEUSER')
+        cfg.set('HAVE_DECL_PTRACE_POKEUSER', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PTRACE_POKEDATA')
+        cfg.set('HAVE_DECL_PTRACE_POKEDATA', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PTRACE_SETREGSET')
+        cfg.set('HAVE_DECL_PTRACE_SETREGSET', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PTRACE_TRACEME')
+        cfg.set('HAVE_DECL_PTRACE_TRACEME', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PTRACE_CONT')
+        cfg.set('HAVE_DECL_PTRACE_CONT', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PTRACE_SINGLESTEP')
+        cfg.set('HAVE_DECL_PTRACE_SINGLESTEP', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PTRACE_SYSCALL')
+        cfg.set('HAVE_DECL_PTRACE_SYSCALL', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PT_IO')
+        cfg.set('HAVE_DECL_PT_IO', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PT_GETREGS')
+        cfg.set('HAVE_DECL_PT_GETREGS', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PT_GETFPREGS')
+        cfg.set('HAVE_DECL_PT_GETFPREGS', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PT_CONTINUE')
+        cfg.set('HAVE_DECL_PT_CONTINUE', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PT_TRACE_ME')
+        cfg.set('HAVE_DECL_PT_TRACE_ME', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PT_STEP')
+        cfg.set('HAVE_DECL_PT_STEP', 1)
+    endif
+    if cc.has_header_symbol('sys/ptrace.h', 'PT_SYSCALL')
+        cfg.set('HAVE_DECL_PT_SYSCALL', 1)
+    endif
+endif
+
+# Determine whether we're building libunwind-nto
+build_nto = get_option('nto').require(
+    cc.has_header('sys/neutrino.h'),
+    error_message: 'requires <sys/neutrino.h>',
+).allowed()
+
+# Determine whether we're building libunwind-setjmp
+build_setjmp = get_option('setjmp').require(
+    target_machine.system() != 'qnx',
+    error_message: 'not available on qnx',
+).disable_auto_if(  # Only enabled by default if local unwinding
+    unw_remote_only,
+).allowed()
+
+# Determine whether we should support the C++ unwinding interface (_Unwind_*).
+# No arch restriction: opt-in only (default disabled), matching configure.ac.
+support_cxx_exceptions = get_option('cxx_exceptions').allowed()
+
+# Propagate other options through to the code as #defines
+if get_option('weak_backtrace')
+    cfg.set('CONFIG_WEAK_BACKTRACE', 1)
+endif
+if get_option('per_thread_cache')
+    cfg.set('HAVE__CACHE_PER_THREAD', 1)
+endif
+if get_option('debug_frame').require(
+    not unw_remote_only,
+    error_message: 'only available with local unwinding',
+).disable_auto_if(  # Only enabled by default on ARM-based platforms
+    host_machine.cpu_family() not in ['arm', 'aarch64'],
+).allowed()
+    cfg.set('CONFIG_DEBUG_FRAME', 1)
+endif
+if get_option('block_signals') and host_machine.system() != 'windows'
+    cfg.set('CONFIG_BLOCK_SIGNALS', 1)
+endif
+if get_option('conservative_checks')
+    cfg.set('CONSERVATIVE_CHECKS', 1)
+endif
+if get_option('msabi_support')
+    cfg.set('CONFIG_MSABI_SUPPORT', 1)
+endif
+if get_option('debug_logs')
+    add_project_arguments('-DUNW_DEBUG', language: ['c', 'cpp'])
+endif
+
+# Extra libraries/tools used for tests
+dl_dep = cc.find_library('dl', required: false)
+threads_dep = dependency('threads')
+abidw = find_program(
+    'abidw',
+    version: '>=2.0.0',
+    native: true,
+    required: false,
+    disabler: true,
+)
+abidiff = find_program(
+    'abidiff',
+    version: '>=2.0.0',
+    native: true,
+    required: false,
+    disabler: true,
+)
+
+# Extra libraries/tools used for documentation
+latex2man = find_program(
+    'latex2man',
+    required: get_option('documentation'),
+    disabler: true,
+    native: true,
+)
+pdflatex = find_program(
+    'pdflatex',
+    required: false,
+    disabler: true,
+    native: true,
+)
+
+enable_unw_resume_tests = target_machine.system() != 'qnx'
+
+# Enable support for compressed
+#
+# Some cross sysroots (e.g. Gentoo crossdev) ship liblzma/zlib without
+# pkg-config or CMake package files, which dependency() alone can't see.
+# Fall back to a raw compiler search so cross builds match autotools'
+# AC_CHECK_LIB-based detection.
+lzma_dep = dependency('liblzma', required: false)
+if not lzma_dep.found() and not get_option('minidebuginfo').disabled() and cc.has_header('lzma.h')
+    lzma_dep = cc.find_library('lzma', required: get_option('minidebuginfo'))
+endif
+if lzma_dep.found()
+    cfg.set('HAVE_LZMA', 1)
+endif
+zlib_dep = dependency('zlib', required: false)
+if not zlib_dep.found() and not get_option('zlibdebuginfo').disabled() and cc.has_header('zlib.h')
+    zlib_dep = cc.find_library('z', required: get_option('zlibdebuginfo'))
+endif
+if zlib_dep.found()
+    cfg.set('HAVE_ZLIB', 1)
+endif
+
+# The names for various architectures differ between Meson's *_machine.cpu_family() and libunwind's
+# code. This table converts the former into the latter.
+archnames = {
+    'aarch64': 'aarch64',
+    'alpha': 'alpha',
+    'arm': 'arm',
+    'ia64': 'ia64',
+    'loongarch64': 'loongarch64',
+    'mips': 'mips',
+    'mips64': 'mips',
+    'parisc': 'hppa',
+    'ppc': 'ppc32',
+    'ppc64': 'ppc64',
+    'riscv32': 'riscv',
+    'riscv64': 'riscv',
+    's390x': 's390x',
+    'sh4': 'sh',
+    'sparc64': 'sparc64',
+    'x86': 'x86',
+    'x86_64': 'x86_64',
+}
+
+# Some architecture names above cover several incompatible data models, which
+# need separate ABI baselines. Compute a subdirectory name for those, empty for
+# everything else. Probing the compiler is necessary because cpu_family() alone
+# cannot tell mips n32 from n64 (both report 'mips64').
+abi_variant = ''
+if archnames[target_machine.cpu_family()] == 'mips'
+    if cc.get_define('_ABIO32') != ''
+        abi_variant = 'o32'
+    elif cc.get_define('_ABIN32') != ''
+        abi_variant = 'n32'
+    elif cc.get_define('_ABI64') != ''
+        abi_variant = 'n64'
+    endif
+elif archnames[target_machine.cpu_family()] == 'riscv'
+    abi_variant = cc.get_define('__riscv_xlen') == '32' ? '32' : '64'
+elif archnames[target_machine.cpu_family()] == 'ppc64'
+    # glibc's struct _libc_vscr, reachable from ucontext_t, is laid out
+    # differently on big- and little-endian ppc64.
+    abi_variant = target_machine.endian() == 'big' ? 'be' : 'le'
+endif
 
 subdir('include')
+subdir('doc')
 subdir('src')
+subdir('tests')

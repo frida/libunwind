@@ -54,6 +54,9 @@ struct unw_addr_space
   struct unw_accessors acc;
   int big_endian;
   ppc64_abi_t abi;
+#ifndef UNW_REMOTE_ONLY
+  unw_iterate_phdr_func_t iterate_phdr_function;
+#endif
   unw_caching_policy_t caching_policy;
   _Atomic uint32_t cache_generation;
   unw_word_t dyn_generation;    /* see dyn-common.h */
@@ -63,7 +66,7 @@ struct unw_addr_space
   int validate;
 };
 
-struct cursor
+struct MAY_ALIAS cursor
 {
   struct dwarf_cursor dwarf;    /* must be first */
 
@@ -176,14 +179,16 @@ dwarf_getvr (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t * val)
   if (DWARF_IS_NULL_LOC (loc))
     return -UNW_EBADREG;
 
-  assert (DWARF_IS_V_LOC (loc));
-  assert (!DWARF_IS_FP_LOC (loc));
-
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_LOC (loc),
-                                      val, 0, c->as_arg);
+    {
+      if (DWARF_IS_V_LOC (loc) || DWARF_IS_FP_LOC (loc))
+        return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_REG_LOC (loc),
+                                           val, 0, c->as_arg);
+      return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc),
+                                       valp, 0, c->as_arg);
+    }
 
-  addr = DWARF_GET_LOC (loc);
+  addr = DWARF_GET_MEM_LOC (loc);
 
   if ((ret = (*c->as->acc.access_mem) (c->as, addr + 0, valp,
                                        0, c->as_arg)) < 0)
@@ -202,14 +207,16 @@ dwarf_putvr (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t val)
   if (DWARF_IS_NULL_LOC (loc))
     return -UNW_EBADREG;
 
-  assert (DWARF_IS_V_LOC (loc));
-  assert (!DWARF_IS_FP_LOC (loc));
-
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_LOC (loc),
-                                      &val, 1, c->as_arg);
+    {
+      if (DWARF_IS_V_LOC (loc) || DWARF_IS_FP_LOC (loc))
+        return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_REG_LOC (loc),
+                                           &val, 1, c->as_arg);
+      return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc),
+                                       valp, 1, c->as_arg);
+    }
 
-  addr = DWARF_GET_LOC (loc);
+  addr = DWARF_GET_MEM_LOC (loc);
   if ((ret = (*c->as->acc.access_mem) (c->as, addr + 0, valp,
                                        1, c->as_arg)) < 0)
     return ret;
@@ -226,16 +233,17 @@ dwarf_getfp (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t * val)
   if (DWARF_IS_NULL_LOC (loc))
     return -UNW_EBADREG;
 
-  assert (DWARF_IS_FP_LOC (loc));
-  assert (!DWARF_IS_V_LOC (loc));
-
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_LOC (loc),
-                                       val, 0, c->as_arg);
+    {
+      if (DWARF_IS_FP_LOC (loc))
+        return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_REG_LOC (loc),
+                                           val, 0, c->as_arg);
+      return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc),
+                                       valp, 0, c->as_arg);
+    }
 
-  addr = DWARF_GET_LOC (loc);
+  addr = DWARF_GET_MEM_LOC (loc);
   return (*c->as->acc.access_mem) (c->as, addr + 0, valp, 0, c->as_arg);
-
 }
 
 static inline int
@@ -247,15 +255,16 @@ dwarf_putfp (struct dwarf_cursor *c, dwarf_loc_t loc, unw_fpreg_t val)
   if (DWARF_IS_NULL_LOC (loc))
     return -UNW_EBADREG;
 
-  assert (DWARF_IS_FP_LOC (loc));
-  assert (!DWARF_IS_V_LOC (loc));
-
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_LOC (loc),
-                                       &val, 1, c->as_arg);
+    {
+      if (DWARF_IS_FP_LOC (loc))
+        return (*c->as->acc.access_fpreg) (c->as, DWARF_GET_REG_LOC (loc),
+                                           &val, 1, c->as_arg);
+      return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc),
+                                       valp, 1, c->as_arg);
+    }
 
-  addr = DWARF_GET_LOC (loc);
-
+  addr = DWARF_GET_MEM_LOC (loc);
   return (*c->as->acc.access_mem) (c->as, addr + 0, valp, 1, c->as_arg);
 }
 
@@ -273,10 +282,10 @@ dwarf_get (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t * val)
   assert (!DWARF_IS_V_LOC (loc));
 
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_reg) (c->as, DWARF_GET_LOC (loc), val,
+    return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc), val,
                                      0, c->as_arg);
   else
-    return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc), val,
+    return (*c->as->acc.access_mem) (c->as, DWARF_GET_MEM_LOC (loc), val,
                                      0, c->as_arg);
 }
 
@@ -294,10 +303,10 @@ dwarf_put (struct dwarf_cursor *c, dwarf_loc_t loc, unw_word_t val)
   assert (!DWARF_IS_V_LOC (loc));
 
   if (DWARF_IS_REG_LOC (loc))
-    return (*c->as->acc.access_reg) (c->as, DWARF_GET_LOC (loc), &val,
+    return (*c->as->acc.access_reg) (c->as, DWARF_GET_REG_LOC (loc), &val,
                                      1, c->as_arg);
   else
-    return (*c->as->acc.access_mem) (c->as, DWARF_GET_LOC (loc), &val,
+    return (*c->as->acc.access_mem) (c->as, DWARF_GET_MEM_LOC (loc), &val,
                                      1, c->as_arg);
 }
 
@@ -352,15 +361,16 @@ extern int tdep_search_unwind_table (unw_addr_space_t as, unw_word_t ip,
                                      unw_proc_info_t * pi,
                                      int need_unwind_info, void *arg);
 extern void *tdep_uc_addr (ucontext_t * uc, int reg);
-extern int tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
+extern int tdep_get_elf_image (unw_addr_space_t as, struct elf_image *ei, pid_t pid, unw_word_t ip,
                                unsigned long *segbase, unsigned long *mapoff,
-                               char *path, size_t pathlen);
+                               char *path, size_t pathlen,
+                               void *arg);
 extern void tdep_get_exe_image_path (char *path);
 extern int tdep_access_reg (struct cursor *c, unw_regnum_t reg,
                             unw_word_t * valp, int write);
 extern int tdep_access_fpreg (struct cursor *c, unw_regnum_t reg,
                               unw_fpreg_t * valp, int write);
 extern int tdep_get_func_addr (unw_addr_space_t as, unw_word_t addr,
-                               unw_word_t *entry_point);
+                               unw_word_t *entry_point, void *arg);
 
 #endif /* PPC64_LIBUNWIND_I_H */

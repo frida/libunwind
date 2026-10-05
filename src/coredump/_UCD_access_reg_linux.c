@@ -22,14 +22,20 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
-#include "_UCD_lib.h"
+#include <stddef.h>
 
 #include "_UCD_internal.h"
 
+#if defined(UNW_TARGET_PPC32) || defined(UNW_TARGET_PPC64) || defined(UNW_TARGET_HPPA) || defined(UNW_TARGET_ALPHA)
+# include <asm/ptrace.h>
+#endif
+
 int
-_UCD_access_reg (unw_addr_space_t as,
-                                unw_regnum_t regnum, unw_word_t *valp,
-                                int write, void *arg)
+_UCD_access_reg (unw_addr_space_t  as UNUSED,
+                 unw_regnum_t      regnum,
+                 unw_word_t       *valp,
+                 int               write,
+                 void             *arg)
 {
   struct UCD_info *ui = arg;
 
@@ -51,14 +57,49 @@ _UCD_access_reg (unw_addr_space_t as,
 #elif defined(UNW_TARGET_SH)
   if (regnum > UNW_SH_PR)
     goto badreg;
-#elif defined(UNW_TARGET_TILEGX)
-  if (regnum > UNW_TILEGX_CFA)
-    goto badreg;
-#elif defined(UNW_TARGET_S390X)
-  if (regnum > UNW_S390X_R15)
-    goto badreg;
-#elif defined(UNW_TARGET_IA64) || defined(UNW_TARGET_HPPA) || defined(UNW_TARGET_PPC32) || defined(UNW_TARGET_PPC64)
+#elif defined(UNW_TARGET_IA64)
   if (regnum >= ARRAY_SIZE(ui->prstatus->pr_reg))
+    goto badreg;
+#elif defined(UNW_TARGET_PPC32) || defined(UNW_TARGET_PPC64)
+  if ((unsigned) regnum <= 31u)
+    /* R0-R31: UNW_PPCxx_Rn = PT_Rn = n, identity */;
+  else
+    {
+      /* DWARF register numbers for special regs, same on ppc32 and ppc64
+       * except NIP (PC): 77 on ppc32, 114 on ppc64.  */
+      static const uint8_t ppc_unw[] =
+        {
+          65,   /* LR  */
+          66,   /* CTR */
+          68,   /* CCR */
+          76,   /* XER */
+#if defined(UNW_TARGET_PPC32)
+          77,   /* NIP (PC) */
+#else
+          114,  /* NIP (PC) */
+#endif
+        };
+      static const uint8_t ppc_pt[] =
+        {
+          PT_LNK, PT_CTR, PT_CCR, PT_XER, PT_NIP,
+        };
+
+      size_t i;
+      for (i = 0; i < ARRAY_SIZE(ppc_unw); i++)
+        if (ppc_unw[i] == (uint8_t) regnum)
+          break;
+      if (i == ARRAY_SIZE(ppc_unw))
+        goto badreg;
+      regnum = ppc_pt[i];
+    }
+#elif defined(UNW_TARGET_HPPA)
+  if ((unsigned) regnum <= 31u)
+    /* GR0-GR31: identity */;
+  else if (regnum == UNW_HPPA_IP)
+    regnum = offsetof(struct user_regs_struct, iaoq[0]) / sizeof(long);
+  else if (regnum == UNW_HPPA_SAR)
+    regnum = offsetof(struct user_regs_struct, sar) / sizeof(long);
+  else
     goto badreg;
 #elif defined(UNW_TARGET_RISCV)
   if (regnum == UNW_RISCV_PC)
@@ -66,77 +107,76 @@ _UCD_access_reg (unw_addr_space_t as,
   else if (regnum > UNW_RISCV_X31)
     goto badreg;
 #elif defined(UNW_TARGET_LOONGARCH64)
-# include <asm/reg.h>
+  /* UNW_LOONGARCH64_Rn = n = LOONGARCH_EF_Rn and
+   * UNW_LOONGARCH64_PC = 33 = LOONGARCH_EF_CSR_ERA: identity mapping.
+   * Index 32 is a gap in the enum; reject it and anything beyond PC.  */
+  if ((unsigned) regnum > 31u && regnum != UNW_LOONGARCH64_PC)
+    goto badreg;
+#else
+#if defined(UNW_TARGET_MIPS)
+
+/* glibc and musl use different names */
+#ifdef __GLIBC__
+#define EF_REG(x) EF_REG ## x
+#else
+#include <sys/reg.h>
+#define EF_REG(x) EF_R ## x
+#endif
 
   static const uint8_t remap_regs[] =
     {
-      [UNW_LOONGARCH64_R0]  = LOONGARCH64_EF_R0,
-      [UNW_LOONGARCH64_R1]  = LOONGARCH64_EF_R1,
-      [UNW_LOONGARCH64_R2]  = LOONGARCH64_EF_R2,
-      [UNW_LOONGARCH64_R3]  = LOONGARCH64_EF_R3,
-      [UNW_LOONGARCH64_R4]  = LOONGARCH64_EF_R4,
-      [UNW_LOONGARCH64_R5]  = LOONGARCH64_EF_R5,
-      [UNW_LOONGARCH64_R6]  = LOONGARCH64_EF_R6,
-      [UNW_LOONGARCH64_R7]  = LOONGARCH64_EF_R7,
-      [UNW_LOONGARCH64_R8]  = LOONGARCH64_EF_R8,
-      [UNW_LOONGARCH64_R9]  = LOONGARCH64_EF_R9,
-      [UNW_LOONGARCH64_R10] = LOONGARCH64_EF_R10,
-      [UNW_LOONGARCH64_R11] = LOONGARCH64_EF_R11,
-      [UNW_LOONGARCH64_R12] = LOONGARCH64_EF_R12,
-      [UNW_LOONGARCH64_R13] = LOONGARCH64_EF_R13,
-      [UNW_LOONGARCH64_R14] = LOONGARCH64_EF_R14,
-      [UNW_LOONGARCH64_R15] = LOONGARCH64_EF_R15,
-      [UNW_LOONGARCH64_R16] = LOONGARCH64_EF_R16,
-      [UNW_LOONGARCH64_R17] = LOONGARCH64_EF_R17,
-      [UNW_LOONGARCH64_R18] = LOONGARCH64_EF_R18,
-      [UNW_LOONGARCH64_R19] = LOONGARCH64_EF_R19,
-      [UNW_LOONGARCH64_R20] = LOONGARCH64_EF_R20,
-      [UNW_LOONGARCH64_R21] = LOONGARCH64_EF_R21,
-      [UNW_LOONGARCH64_R22] = LOONGARCH64_EF_R22,
-      [UNW_LOONGARCH64_R23] = LOONGARCH64_EF_R23,
-      [UNW_LOONGARCH64_R24] = LOONGARCH64_EF_R24,
-      [UNW_LOONGARCH64_R25] = LOONGARCH64_EF_R25,
-      [UNW_LOONGARCH64_R28] = LOONGARCH64_EF_R28,
-      [UNW_LOONGARCH64_R29] = LOONGARCH64_EF_R29,
-      [UNW_LOONGARCH64_R30] = LOONGARCH64_EF_R30,
-      [UNW_LOONGARCH64_R31] = LOONGARCH64_EF_R31,
-      [UNW_LOONGARCH64_PC]  = LOONGARCH64_EF_CSR_EPC,
+      [UNW_MIPS_R0]  = EF_REG(0),
+      [UNW_MIPS_R1]  = EF_REG(1),
+      [UNW_MIPS_R2]  = EF_REG(2),
+      [UNW_MIPS_R3]  = EF_REG(3),
+      [UNW_MIPS_R4]  = EF_REG(4),
+      [UNW_MIPS_R5]  = EF_REG(5),
+      [UNW_MIPS_R6]  = EF_REG(6),
+      [UNW_MIPS_R7]  = EF_REG(7),
+      [UNW_MIPS_R8]  = EF_REG(8),
+      [UNW_MIPS_R9]  = EF_REG(9),
+      [UNW_MIPS_R10] = EF_REG(10),
+      [UNW_MIPS_R11] = EF_REG(11),
+      [UNW_MIPS_R12] = EF_REG(12),
+      [UNW_MIPS_R13] = EF_REG(13),
+      [UNW_MIPS_R14] = EF_REG(14),
+      [UNW_MIPS_R15] = EF_REG(15),
+      [UNW_MIPS_R16] = EF_REG(16),
+      [UNW_MIPS_R17] = EF_REG(17),
+      [UNW_MIPS_R18] = EF_REG(18),
+      [UNW_MIPS_R19] = EF_REG(19),
+      [UNW_MIPS_R20] = EF_REG(20),
+      [UNW_MIPS_R21] = EF_REG(21),
+      [UNW_MIPS_R22] = EF_REG(22),
+      [UNW_MIPS_R23] = EF_REG(23),
+      [UNW_MIPS_R24] = EF_REG(24),
+      [UNW_MIPS_R25] = EF_REG(25),
+      [UNW_MIPS_R28] = EF_REG(28),
+      [UNW_MIPS_R29] = EF_REG(29),
+      [UNW_MIPS_R30] = EF_REG(30),
+      [UNW_MIPS_R31] = EF_REG(31),
+      [UNW_MIPS_PC]  = EF_CP0_EPC,
     };
-#else
-#if defined(UNW_TARGET_MIPS)
+#elif defined(UNW_TARGET_S390X)
   static const uint8_t remap_regs[] =
     {
-      [UNW_MIPS_R0]  = EF_REG0,
-      [UNW_MIPS_R1]  = EF_REG1,
-      [UNW_MIPS_R2]  = EF_REG2,
-      [UNW_MIPS_R3]  = EF_REG3,
-      [UNW_MIPS_R4]  = EF_REG4,
-      [UNW_MIPS_R5]  = EF_REG5,
-      [UNW_MIPS_R6]  = EF_REG6,
-      [UNW_MIPS_R7]  = EF_REG7,
-      [UNW_MIPS_R8]  = EF_REG8,
-      [UNW_MIPS_R9]  = EF_REG9,
-      [UNW_MIPS_R10] = EF_REG10,
-      [UNW_MIPS_R11] = EF_REG11,
-      [UNW_MIPS_R12] = EF_REG12,
-      [UNW_MIPS_R13] = EF_REG13,
-      [UNW_MIPS_R14] = EF_REG14,
-      [UNW_MIPS_R15] = EF_REG15,
-      [UNW_MIPS_R16] = EF_REG16,
-      [UNW_MIPS_R17] = EF_REG17,
-      [UNW_MIPS_R18] = EF_REG18,
-      [UNW_MIPS_R19] = EF_REG19,
-      [UNW_MIPS_R20] = EF_REG20,
-      [UNW_MIPS_R21] = EF_REG21,
-      [UNW_MIPS_R22] = EF_REG22,
-      [UNW_MIPS_R23] = EF_REG23,
-      [UNW_MIPS_R24] = EF_REG24,
-      [UNW_MIPS_R25] = EF_REG25,
-      [UNW_MIPS_R28] = EF_REG28,
-      [UNW_MIPS_R29] = EF_REG29,
-      [UNW_MIPS_R30] = EF_REG30,
-      [UNW_MIPS_R31] = EF_REG31,
-      [UNW_MIPS_PC]  = EF_CP0_EPC,
+      [UNW_S390X_IP]  = offsetof(struct user_regs_struct, psw.addr) / sizeof(long),
+      [UNW_S390X_R0]  = offsetof(struct user_regs_struct, gprs[0]) / sizeof(long),
+      [UNW_S390X_R1]  = offsetof(struct user_regs_struct, gprs[1]) / sizeof(long),
+      [UNW_S390X_R2]  = offsetof(struct user_regs_struct, gprs[2]) / sizeof(long),
+      [UNW_S390X_R3]  = offsetof(struct user_regs_struct, gprs[3]) / sizeof(long),
+      [UNW_S390X_R4]  = offsetof(struct user_regs_struct, gprs[4]) / sizeof(long),
+      [UNW_S390X_R5]  = offsetof(struct user_regs_struct, gprs[5]) / sizeof(long),
+      [UNW_S390X_R6]  = offsetof(struct user_regs_struct, gprs[6]) / sizeof(long),
+      [UNW_S390X_R7]  = offsetof(struct user_regs_struct, gprs[7]) / sizeof(long),
+      [UNW_S390X_R8]  = offsetof(struct user_regs_struct, gprs[8]) / sizeof(long),
+      [UNW_S390X_R9]  = offsetof(struct user_regs_struct, gprs[9]) / sizeof(long),
+      [UNW_S390X_R10] = offsetof(struct user_regs_struct, gprs[10]) / sizeof(long),
+      [UNW_S390X_R11] = offsetof(struct user_regs_struct, gprs[11]) / sizeof(long),
+      [UNW_S390X_R12] = offsetof(struct user_regs_struct, gprs[12]) / sizeof(long),
+      [UNW_S390X_R13] = offsetof(struct user_regs_struct, gprs[13]) / sizeof(long),
+      [UNW_S390X_R14] = offsetof(struct user_regs_struct, gprs[14]) / sizeof(long),
+      [UNW_S390X_R15] = offsetof(struct user_regs_struct, gprs[15]) / sizeof(long),
     };
 #elif defined(UNW_TARGET_X86)
   static const uint8_t remap_regs[] =
@@ -167,14 +207,75 @@ _UCD_access_reg (unw_addr_space_t as,
       [UNW_X86_64_RSP]    = offsetof(struct user_regs_struct, rsp) / sizeof(long),
       [UNW_X86_64_RIP]    = offsetof(struct user_regs_struct, rip) / sizeof(long),
     };
+#elif defined(UNW_TARGET_ALPHA)
+  if (regnum > UNW_ALPHA_R30 && regnum != UNW_ALPHA_PC)
+    goto badreg;
+
+  /* NT_PRSTATUS pr_reg stores R0-R30 sequentially at indices 0-30, with PC
+   * at index 31. The EF_* constants in <asm/reg.h> describe the kernel
+   * exception frame layout and must not be used to index pr_reg. */
+  static const uint8_t remap_regs[UNW_ALPHA_PC + 1] =
+    {
+      [UNW_ALPHA_R0]  = 0,
+      [UNW_ALPHA_R1]  = 1,
+      [UNW_ALPHA_R2]  = 2,
+      [UNW_ALPHA_R3]  = 3,
+      [UNW_ALPHA_R4]  = 4,
+      [UNW_ALPHA_R5]  = 5,
+      [UNW_ALPHA_R6]  = 6,
+      [UNW_ALPHA_R7]  = 7,
+      [UNW_ALPHA_R8]  = 8,
+      [UNW_ALPHA_R9]  = 9,
+      [UNW_ALPHA_R10] = 10,
+      [UNW_ALPHA_R11] = 11,
+      [UNW_ALPHA_R12] = 12,
+      [UNW_ALPHA_R13] = 13,
+      [UNW_ALPHA_R14] = 14,
+      [UNW_ALPHA_R15] = 15,
+      [UNW_ALPHA_R16] = 16,
+      [UNW_ALPHA_R17] = 17,
+      [UNW_ALPHA_R18] = 18,
+      [UNW_ALPHA_R19] = 19,
+      [UNW_ALPHA_R20] = 20,
+      [UNW_ALPHA_R21] = 21,
+      [UNW_ALPHA_R22] = 22,
+      [UNW_ALPHA_R23] = 23,
+      [UNW_ALPHA_R24] = 24,
+      [UNW_ALPHA_R25] = 25,
+      [UNW_ALPHA_R26] = 26,
+      [UNW_ALPHA_R27] = 27,
+      [UNW_ALPHA_R28] = 28,
+      [UNW_ALPHA_R29] = 29,
+      [UNW_ALPHA_R30] = 30,
+      [UNW_ALPHA_PC]  = 31,
+    };
+#elif defined(UNW_TARGET_SPARC)
+  /* SPARC64 NT_PRSTATUS pr_reg layout (see arch/sparc/include/asm/elf_64.h):
+   *   [0..7]   G0-G7
+   *   [8..15]  O0-O7  (O6 = SP, O7 = link register)
+   *   [16..23] L0-L7
+   *   [24..31] I0-I7  (I6 = FP)
+   *   [32]     TSTATE
+   *   [33]     TPC
+   *   [34]     TNPC
+   *   [35]     Y
+   * UNW_SPARC64_{G0..I7} enum values are 0..31, so identity-map them.
+   * UNW_SPARC64_PC (103) maps to slot 33 (TPC).
+   */
+  if (regnum == UNW_SPARC64_PC)
+    regnum = 33;  /* TPC */
+  else if (regnum > UNW_SPARC64_I7)
+    goto badreg;
 #else
 #error Port me
 #endif
 
+#if !defined(UNW_TARGET_SPARC)
   if (regnum >= (unw_regnum_t)ARRAY_SIZE(remap_regs))
     goto badreg;
 
   regnum = remap_regs[regnum];
+#endif
 #endif
 
   /* pr_reg is a long[] array, but it contains struct user_regs_struct's

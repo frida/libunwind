@@ -28,6 +28,11 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #define UNW_LOCAL_ONLY
 
+/* Request GNU extensions (_Unwind_Trace_Fn, _UA_END_OF_STACK) from unwind.h */
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE
+#endif
+
 #include <unwind.h>
 #include <stdlib.h>
 #include <libunwind.h>
@@ -54,7 +59,7 @@ struct _Unwind_Context {
    ((unw_getcontext (uc) < 0 || unw_init_local (&(context)->cursor, uc) < 0) \
     ? -1 : 0))
 
-static _Unwind_Reason_Code ALWAYS_INLINE
+ALWAYS_INLINE static _Unwind_Reason_Code
 _Unwind_Phase2 (struct _Unwind_Exception *exception_object,
                 struct _Unwind_Context *context)
 {

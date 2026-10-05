@@ -32,7 +32,7 @@ mips_handle_signal_frame (unw_cursor_t *cursor)
   struct cursor *c = (struct cursor *) cursor;
   unw_word_t sc_addr, sp_addr = c->dwarf.cfa;
   unw_word_t ra, fp;
-  int ret;
+  int i, ret;
 
   switch (unw_is_signal_frame (cursor)) {
   case 1:
@@ -46,10 +46,17 @@ mips_handle_signal_frame (unw_cursor_t *cursor)
     return -UNW_EUNSPEC;
   }
 
-  if (tdep_big_endian(c->dwarf.as))
+  /* On O32 big-endian, 32-bit register values are sign-extended to 64 bits and
+     stored in the upper half of each 8-byte slot.  Add 4 to reach the actual
+     32-bit value.  On N32/N64, registers are natively 64-bit, so no offset
+     is needed (and adding 4 would misalign the 64-bit access).  */
+  if (tdep_big_endian(c->dwarf.as) && c->dwarf.as->abi == UNW_MIPS_ABI_O32)
     sc_addr += 4;
 
   c->sigcontext_addr = sc_addr;
+
+  for (i = 0; i < DWARF_NUM_PRESERVED_REGS; ++i)
+    c->dwarf.loc[i] = DWARF_NULL_LOC;
 
   /* Update the dwarf cursor. */
   c->dwarf.loc[UNW_MIPS_R0]  = DWARF_LOC (sc_addr + LINUX_SC_R0_OFF, 0);
@@ -112,18 +119,19 @@ mips_handle_signal_frame (unw_cursor_t *cursor)
 
 
 
+#define FP_REG UNW_MIPS_R30
+#define SP_REG UNW_MIPS_R29
+#define RA_REG UNW_MIPS_R31
+
+#if _MIPS_SIM == _ABI64
+
 static inline
 int is_valid_fp_val(unw_word_t cfa_val, unw_word_t fp_val)
 {
   return fp_val > 0 && cfa_val > 0 && fp_val >cfa_val && (fp_val - cfa_val < 0x4000);
 }
-
 static int _step_n64(struct cursor *c)
 {
-  #define FP_REG UNW_MIPS_R30
-  #define SP_REG UNW_MIPS_R29
-  #define RA_REG UNW_MIPS_R31
-
   //TODO:handle plt entry
   int ret;
   unw_word_t current_fp_val = 0;
@@ -199,6 +207,61 @@ static int _step_n64(struct cursor *c)
   }
   return (c->dwarf.ip == 0) ? 0 : 1;
 }
+#endif /* _MIPS_SIM == _ABI64 */
+
+#if _MIPS_SIM != _ABI64
+/* Fallback when DWARF info is missing (O32 and N32).  When dwarf_step()
+   fails, use $ra to determine the return address.  */
+static int _step_ra_fallback(struct cursor *c)
+{
+  int ret;
+  unw_word_t current_ra_val = 0;
+
+  ret = dwarf_get (&c->dwarf, c->dwarf.loc[RA_REG], &current_ra_val);
+  if (ret < 0)
+    {
+      /* Can't read $ra -- if the location is null, treat as end of chain. */
+      if (DWARF_IS_NULL_LOC (c->dwarf.loc[RA_REG]))
+        {
+          Debug (2, "NULL %%ra loc, returning 0\n");
+          c->dwarf.ip = 0;
+          return 0;
+        }
+      Debug (2, "returning %d [RA=0x%lx]\n", ret,
+             DWARF_GET_LOC (c->dwarf.loc[RA_REG]));
+      return ret;
+    }
+
+  Debug (2, "ra fallback: CFA=0x%lx IP=0x%lx RA=0x%lx\n",
+         (unsigned long)c->dwarf.cfa, (unsigned long)c->dwarf.ip,
+         (unsigned long)current_ra_val);
+
+  /* $ra == 0 means end of call chain (e.g., kernel sets $ra = 0 for _start,
+     though typically $ra == ip is hit first -- see below). */
+  if (current_ra_val == 0)
+    {
+      c->dwarf.ip = 0;
+      return 0;
+    }
+
+  /* $ra == ip means the frame did not change the return address -- we cannot
+     make progress.  This is the common end-of-chain case: at __start, the
+     DWARF step from __libc_start_main restored $ra to the same address as
+     the current IP. */
+  if (current_ra_val == c->dwarf.ip)
+    {
+      Debug (2, "RA == IP, end of chain\n");
+      c->dwarf.ip = 0;
+      return 0;
+    }
+
+  /* Use $ra as the next IP. */
+  c->dwarf.ip = current_ra_val;
+  c->dwarf.use_prev_instr = 1;
+
+  return 1;
+}
+#endif /* _MIPS_SIM != _ABI64 */
 
 int
 unw_step (unw_cursor_t *cursor)
@@ -219,7 +282,7 @@ unw_step (unw_cursor_t *cursor)
 #if _MIPS_SIM == _ABI64
       return _step_n64(c);
 #else
-      return ret;
+      return _step_ra_fallback(c);
 #endif
     }
 

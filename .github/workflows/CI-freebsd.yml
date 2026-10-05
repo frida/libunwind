@@ -1,0 +1,88 @@
+name: CI - FreeBSD
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - '**'
+      - '!README.md'
+      - '!doc/**'
+      - '!.**'
+      - '.github/workflows/CI-freebsd.yml'
+  push:
+    branches:
+      - v[0-9].*
+      - master
+
+jobs:
+  build-freebsd:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: cpa.sh {0}
+    timeout-minutes: 15 # Anything more than about 15 minutes is likely a testsuite hang.
+    strategy:
+      fail-fast: false
+      matrix:
+        os_version: ['14.4', '15.1']
+        compiler: [clang, gcc]
+        architecture: [x86_64, aarch64]
+        exclude:
+          - architecture: aarch64
+            compiler: gcc
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Start VM
+        uses: cross-platform-actions/action@v1.5.0
+        env:
+            IGNORE_OSVERSION: yes
+        with:
+          operating_system: freebsd
+          version: ${{ matrix.os_version }}
+          architecture: ${{ matrix.architecture }}
+          memory: 8G
+
+      - name: Build and test on ${{ matrix.architecture }}-freebsd-${{ matrix.os_version }} using ${{ matrix.compiler }}
+          run: |
+            printf 'shell="%s"\n' $SHELL
+            if [ "${{ matrix.compiler }}" = "gcc" ]; then
+              BUILD_PKGS="autoconf automake libtool gcc"
+            else
+              BUILD_PKGS='autoconf automake libtool'
+            fi
+            sudo pkg install -y $BUILD_PKGS
+            
+            if [ "${{ matrix.compiler }}" = "gcc" ]; then
+              export CC=gcc
+              export CXX=g++
+            else
+              export CC=clang
+              export CXX=clang++
+            fi
+            export CFLAGS='-Wall -Wextra'
+
+            printf '\n Configuration \n'
+            autoreconf -ifv
+            ./configure --enable-debug --enable-coredump --enable-cxx-exceptions
+            
+            printf '\n Build \n'
+            make -j$(nproc)
+
+            printf '\n Test \n'
+            export UNW_DEBUG_LEVEL=7
+            make check -j$(nproc)
+
+      - name: Upload Test Logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ matrix.architecture }}-freebsd${{ matrix.os_version }}-${{ matrix.compiler }}
+          path: |
+            **/test-suite.log
+            **/config.log
+          if-no-files-found: warn

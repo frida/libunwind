@@ -32,12 +32,13 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include "elf64.h"
 
 HIDDEN int
-tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
+tdep_get_elf_image (unw_addr_space_t as, struct elf_image *ei, pid_t pid, unw_word_t ip,
                     unsigned long *segbase, unsigned long *mapoff,
-                    char *path, size_t pathlen)
+                    char *path, size_t pathlen, void *arg)
 {
   struct load_module_desc lmd;
   const char *path2;
+  int ret;
 
   if (pid != getpid ())
     {
@@ -63,7 +64,11 @@ tdep_get_elf_image (struct elf_image *ei, pid_t pid, unw_word_t ip,
     }
   Debug(1, "segbase=%lx, mapoff=%lx, path=%s\n", *segbase, *mapoff, path);
 
-  return elf_map_image (ei, path);
+  if (ei)
+    ret = elf_map_image (ei, path);
+  else
+    ret = strlen (path2) >= path ? -UNW_ENOMEM : UNW_ESUCCESS;
+  return ret;
 }
 
 #ifndef UNW_REMOTE_ONLY

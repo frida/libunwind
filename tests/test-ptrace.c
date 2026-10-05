@@ -55,6 +55,7 @@ static const int nerrors_max = 100;
 int nerrors;
 int verbose;
 int print_names = 1;
+int print_elf_filename;
 
 enum
   {
@@ -64,8 +65,8 @@ enum
   }
 trace_mode = SYSCALL;
 
-#define panic(args...)						\
-	do { fprintf (stderr, args); ++nerrors; } while (0)
+#define panic(...)						\
+	do { fprintf (stderr, __VA_ARGS__); ++nerrors; } while (0)
 
 static unw_addr_space_t as;
 static struct UPT_info *ui;
@@ -111,7 +112,7 @@ do_backtrace (void)
 	  printf ("%016lx %-32s (sp=%016lx)\n", (long) ip, buf, (long) sp);
 	}
 
-      if ((ret = unw_get_proc_info (&c, &pi)) < 0)
+      if ((ret = unw_get_proc_info (&c, &pi)) < 0 && ret != -UNW_ENOINFO) /* It's possible unw_get_proc_info don't return information */
 	panic ("unw_get_proc_info(ip=0x%lx) failed: ret=%d\n", (long) ip, ret);
       else if (verbose)
 	printf ("\tproc=%016lx-%016lx\n\thandler=%lx lsda=%lx",
@@ -130,6 +131,14 @@ do_backtrace (void)
 #endif
       if (verbose)
 	printf ("\n");
+
+      if (print_elf_filename)
+        {
+          if ((ret = unw_get_elf_filename(&c, buf, sizeof (buf), &off)) != UNW_ESUCCESS)
+            panic ("unw_get_elf_filename(ip=0x%lx) failed: ret=%d\n", (long) ip, ret);
+          else if (verbose)
+              printf ("\t[%s+0x%lx]\n", buf, (long) off);
+        }
 
       ret = unw_step (&c);
       if (ret < 0)
@@ -178,15 +187,22 @@ main (int argc, char **argv)
 
   if (argc == 1)
     {
-      static char *args[] = { "self", "ls", "/", NULL };
+      /* Automated test case: trace the tracee that was built alongside
+         this program.  A program from the host system may have a
+         different word size than the library was built for (a -m32 build
+         on an x86_64 machine, say), and a process of a different word
+         size cannot be unwound.  The test suite runs with the test
+         directory as the working directory; UNW_PTRACE_TRACEE overrides
+         the path for runs from elsewhere.  */
+      static char *args[] = { "self", NULL, NULL };
+      char *tracee = getenv ("UNW_PTRACE_TRACEE");
 
-      /* automated test case */
+      /* args[0] stands in for argv[0]; the program to trace is picked up
+         at argv[optind], which is 1 here.  */
+      args[1] = tracee != NULL ? tracee : "./ptrace-tracee";
       argv = args;
 
-      /* Unless the args array is 'walked' the child
-         process is unable to access it and dies with a segfault */
-      fprintf(stderr, "Automated test (%s,%s,%s,%s)\n",
-              args[0],args[1],args[2],args[3]);
+      fprintf (stderr, "Automated test (%s)\n", args[1]);
     }
   else if (argc > 1)
     while (argv[optind][0] == '-')
@@ -207,6 +223,9 @@ main (int argc, char **argv)
 	else if (strcmp (argv[optind], "-n") == 0)
 	  /* Don't look-up and print symbol names.  */
 	  ++optind, print_names = 0;
+        else if (strcmp (argv[optind], "-f") == 0)
+	  /* Print elf filenames. */
+          ++optind, print_elf_filename = 1;
 	else
 	  fprintf(stderr, "unrecognized option: %s\n", argv[optind++]);
         if (optind >= argc)
@@ -222,21 +241,29 @@ main (int argc, char **argv)
 	dup2 (open ("/dev/null", O_WRONLY), 1);
 
 #if HAVE_DECL_PTRACE_TRACEME
-      ptrace (PTRACE_TRACEME, 0, 0, 0);
+      long stat = ptrace (PTRACE_TRACEME, 0, 0, 0);
 #elif HAVE_DECL_PT_TRACE_ME
-      ptrace (PT_TRACE_ME, 0, 0, 0);
+      int stat = ptrace (PT_TRACE_ME, 0, 0, 0);
 #else
 #error Trace me
 #endif
+      if (stat == -1)
+        {
+          if (verbose)
+            {
+              fprintf(stderr, "ptrace() returned %ld errno=%d (%s)\n", (long)stat, errno, strerror(errno));
+            }
+          _exit(77);
+        }
 
       if ((argc > 1) && (optind == argc)) {
         fprintf(stderr, "Need to specify a command line for the child\n");
         exit (-1);
       }
-#ifdef __FreeBSD__
-      execve (argv[optind], argv + optind, environ);
-#else
+#ifdef HAVE_EXECVPE
       execvpe (argv[optind], argv + optind, environ);
+#else
+      execve (argv[optind], argv + optind, environ);
 #endif
       _exit (-1);
     }
@@ -262,6 +289,8 @@ main (int argc, char **argv)
 	    {
 	      if (WEXITSTATUS (status) != 0)
 		panic ("child's exit status %d\n", WEXITSTATUS (status));
+	      if (WEXITSTATUS (status) == 77)
+		_exit(77);
 	      break;
 	    }
 	  else if (WIFSIGNALED (status))
@@ -333,10 +362,10 @@ main (int argc, char **argv)
 	  if (!state)
 	    do_backtrace ();
 	  state ^= 1;
-#if HAVE_DECL_PTRACE_SYSCALL
-	  ptrace (PTRACE_SYSCALL, target_pid, 0, pending_sig);
-#elif HAVE_DECL_PT_SYSCALL
+#if HAVE_DECL_PT_SYSCALL
 	  ptrace (PT_SYSCALL, target_pid, (caddr_t)1, pending_sig);
+#elif HAVE_DECL_PTRACE_SYSCALL
+	  ptrace (PTRACE_SYSCALL, target_pid, 0, pending_sig);
 #else
 #error Syscall me
 #endif

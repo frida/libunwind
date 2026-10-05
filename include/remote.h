@@ -7,38 +7,40 @@
 
 #ifdef UNW_LOCAL_ONLY
 
+#include <string.h>
+
 static inline int
-fetch8 (unw_addr_space_t as, unw_accessors_t *a,
-        unw_word_t *addr, int8_t *valp, void *arg)
+fetch8 (unw_addr_space_t as UNUSED, unw_accessors_t *a UNUSED,
+        unw_word_t *addr, int8_t *valp, void *arg UNUSED)
 {
-  *valp = *(int8_t *) (uintptr_t) *addr;
+  memcpy (valp, (void *) (uintptr_t) *addr, sizeof (*valp));
   *addr += 1;
   return 0;
 }
 
 static inline int
-fetch16 (unw_addr_space_t as, unw_accessors_t *a,
-         unw_word_t *addr, int16_t *valp, void *arg)
+fetch16 (unw_addr_space_t as UNUSED, unw_accessors_t *a UNUSED,
+         unw_word_t *addr, int16_t *valp, void *arg UNUSED)
 {
-  *valp = *(int16_t *) (uintptr_t) *addr;
+  memcpy (valp, (void *) (uintptr_t) *addr, sizeof (*valp));
   *addr += 2;
   return 0;
 }
 
 static inline int
-fetch32 (unw_addr_space_t as, unw_accessors_t *a,
-         unw_word_t *addr, int32_t *valp, void *arg)
+fetch32 (unw_addr_space_t as UNUSED, unw_accessors_t *a UNUSED,
+         unw_word_t *addr, int32_t *valp, void *arg UNUSED)
 {
-  *valp = *(int32_t *) (uintptr_t) *addr;
+  memcpy (valp, (void *) (uintptr_t) *addr, sizeof (*valp));
   *addr += 4;
   return 0;
 }
 
 static inline int
-fetchw (unw_addr_space_t as, unw_accessors_t *a,
-        unw_word_t *addr, unw_word_t *valp, void *arg)
+fetchw (unw_addr_space_t as UNUSED, unw_accessors_t *a UNUSED,
+        unw_word_t *addr, unw_word_t *valp, void *arg UNUSED)
 {
-  *valp = *(unw_word_t *) (uintptr_t) *addr;
+  memcpy (valp, (void *) (uintptr_t) *addr, sizeof (*valp));
   *addr += sizeof (unw_word_t);
   return 0;
 }
@@ -51,7 +53,7 @@ static inline int
 fetch8 (unw_addr_space_t as, unw_accessors_t *a,
         unw_word_t *addr, int8_t *valp, void *arg)
 {
-  unw_word_t val, aligned_addr = *addr & -WSIZE, off = *addr - aligned_addr;
+  unw_word_t val, aligned_addr = *addr & (~WSIZE + 1), off = *addr - aligned_addr;
   int ret;
 
   *addr += 1;
@@ -71,7 +73,7 @@ static inline int
 fetch16 (unw_addr_space_t as, unw_accessors_t *a,
          unw_word_t *addr, int16_t *valp, void *arg)
 {
-  unw_word_t val, aligned_addr = *addr & -WSIZE, off = *addr - aligned_addr;
+  unw_word_t val, aligned_addr = *addr & (~WSIZE + 1), off = *addr - aligned_addr;
   int ret;
 
   if ((off & 0x1) != 0)
@@ -94,7 +96,7 @@ static inline int
 fetch32 (unw_addr_space_t as, unw_accessors_t *a,
          unw_word_t *addr, int32_t *valp, void *arg)
 {
-  unw_word_t val, aligned_addr = *addr & -WSIZE, off = *addr - aligned_addr;
+  unw_word_t val, aligned_addr = *addr & (~WSIZE + 1), off = *addr - aligned_addr;
   int ret;
 
   if ((off & 0x3) != 0)

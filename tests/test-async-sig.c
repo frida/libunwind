@@ -52,16 +52,25 @@ int verbose;
 int nerrors;
 int sigcount;
 
-#ifndef CONFIG_BLOCK_SIGNALS
-/* When libunwind is configured with --enable-block-signals=no, the caller
-   is responsible for preventing recursion via signal handlers.
-   We use a simple global here.  In a multithreaded program, one would use
-   a thread-local variable.  */
+/* Prevent recursion when a signal is delivered during do_backtrace().
+   CONFIG_BLOCK_SIGNALS only blocks signals around mutex operations inside
+   libunwind, not during the entire unw_step(), so the caller must still
+   guard against re-entering do_backtrace() from a signal handler.
+   In a multithreaded program, one would use a thread-local variable.  */
 int recurcount;
-#endif
 
-#define panic(args...)					\
-	{ ++nerrors; fprintf (stderr, args); return; }
+/* Pending caching-policy change requested by the signal handler.
+   unw_set_caching_policy() calls unw_flush_cache() which munmaps the
+   debug_frames list.  If the signal fires while the main thread is inside
+   do_backtrace() it will hold a live pointer into that list; calling
+   unw_set_caching_policy() from the signal handler would therefore free
+   memory still in active use, causing a SIGSEGV on the next access.
+   We defer the change to the main loop, which applies it between
+   do_backtrace() calls when no live pointers into the cache exist.  */
+static volatile sig_atomic_t pending_caching_policy = -1;
+
+#define panic(...)					\
+	{ ++nerrors; fprintf (stderr, __VA_ARGS__); return; }
 
 static void
 do_backtrace (int may_print, int get_proc_name)
@@ -73,11 +82,9 @@ do_backtrace (int may_print, int get_proc_name)
   int ret;
   int depth = 0;
 
-#ifndef CONFIG_BLOCK_SIGNALS
   if (recurcount > 0)
     return;
   recurcount += 1;
-#endif
 
   unw_getcontext (&uc);
   if (unw_init_local (&cursor, &uc) < 0)
@@ -111,6 +118,10 @@ do_backtrace (int may_print, int get_proc_name)
 	printf ("%016lx %-32s (sp=%016lx)\n", (long) ip, buf, (long) sp);
 
       ret = unw_step (&cursor);
+#ifdef UNW_TARGET_ARM
+      if (ret == -UNW_ESTOPUNWIND)
+	break;
+#endif
       if (ret < 0)
 	{
 	  unw_get_reg (&cursor, UNW_REG_IP, &ip);
@@ -125,9 +136,10 @@ do_backtrace (int may_print, int get_proc_name)
     }
   while (ret > 0);
 
-#ifndef CONFIG_BLOCK_SIGNALS
+  if (depth < 3)
+    panic ("FAILURE: only found %d frames\n", depth);
+
   recurcount -= 1;
-#endif
 }
 
 void
@@ -141,9 +153,9 @@ sighandler (int signal)
   ++sigcount;
 
   if (sigcount == 100)
-    unw_set_caching_policy (unw_local_addr_space, UNW_CACHE_GLOBAL);
+    pending_caching_policy = UNW_CACHE_GLOBAL;
   else if (sigcount == 200)
-    unw_set_caching_policy (unw_local_addr_space, UNW_CACHE_PER_THREAD);
+    pending_caching_policy = UNW_CACHE_PER_THREAD;
   else if (sigcount == 300 || nerrors > nerrors_max)
     {
       if (nerrors > nerrors_max)
@@ -157,7 +169,7 @@ sighandler (int signal)
 	printf ("SUCCESS.\n");
       exit (0);
     }
-  setitimer (ITIMER_VIRTUAL, &interval, NULL);
+  setitimer (ITIMER_REAL, &interval, NULL);
 }
 
 int
@@ -174,15 +186,36 @@ main (int argc, char **argv UNUSED)
   memset (&act, 0, sizeof (act));
   act.sa_handler = sighandler;
   act.sa_flags = SA_SIGINFO;
-  sigaction (SIGVTALRM, &act, NULL);
+  sigaction (SIGALRM, &act, NULL);
 
-  setitimer (ITIMER_VIRTUAL, &interval, NULL);
+  setitimer (ITIMER_REAL, &interval, NULL);
 
   while (1)
     {
-      if (0 && verbose)
+      if (verbose)
 	printf ("%s: starting backtrace\n", __FUNCTION__);
       do_backtrace (0, (i++ % 100) == 0);
+
+      /* Apply any caching-policy change requested by the signal handler.
+         This is done here, outside do_backtrace(), so that no live pointer
+         into the debug_frames cache exists when unw_flush_cache() runs.
+         Block SIGALRM for the duration so the signal handler cannot call
+         do_backtrace() while unw_flush_cache() is partway through freeing
+         the list — that would access partially-freed nodes.  */
+      if (pending_caching_policy >= 0)
+        {
+          sigset_t block_alarm, old_mask;
+          sigemptyset (&block_alarm);
+          sigaddset (&block_alarm, SIGALRM);
+          sigprocmask (SIG_BLOCK, &block_alarm, &old_mask);
+          recurcount++;  /* block signal handler's do_backtrace() during post-flush window */
+          unw_set_caching_policy (unw_local_addr_space, pending_caching_policy);
+          pending_caching_policy = -1;
+          sigprocmask (SIG_SETMASK, &old_mask, NULL);
+          /* pending SIGALRM fires here; do_backtrace() returns immediately */
+          recurcount--;
+        }
+
       if (nerrors > nerrors_max)
         {
 	  fprintf (stderr, "Too many errors (%d)\n", nerrors);

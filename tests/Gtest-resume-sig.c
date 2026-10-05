@@ -41,8 +41,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 # include <ia64intrin.h>
 #endif
 
-#define panic(args...)						\
-	do { fprintf (stderr, args); ++nerrors; } while (0)
+#define panic(...)						\
+	do { fprintf (stderr, __VA_ARGS__); ++nerrors; } while (0)
 
 int verbose;
 int nerrors;
@@ -119,11 +119,6 @@ handler (int sig)
       if ((ret = unw_step (&c)) < 0)		/* step to kill() */
 	panic ("unw_step(2) failed: ret=%d\n", ret);
 
-#if defined(UNW_TARGET_TILEGX)
-      if ((ret = unw_step (&c)) < 0)		/* step to signal trampoline */
-	panic ("unw_step(2) failed: ret=%d\n", ret);
-#endif
-
       if ((ret = unw_get_reg (&c, UNW_REG_IP, &ip)) < 0)
 	panic ("unw_get_reg(IP) failed: ret=%d\n", ret);
       if (verbose)
@@ -149,7 +144,7 @@ int
 main (int argc, char **argv UNUSED)
 {
   struct sigaction sa;
-  float d = 1.0;
+  volatile float d = 1.0;
   int n = 0;
 
   if (argc > 1)

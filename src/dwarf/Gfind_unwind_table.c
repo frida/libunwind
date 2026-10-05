@@ -36,12 +36,15 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #define to_unw_word(p) ((unw_word_t) (uintptr_t) (p))
 
 int
-dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
-                         char *path, unw_word_t segbase, unw_word_t mapoff,
-                         unw_word_t ip)
+dwarf_find_unwind_table (struct elf_dyn_info *edi,
+						 unw_addr_space_t     as UNUSED,
+                         const char          *path UNUSED,
+                         unw_word_t           segbase,
+                         unw_word_t           mapoff,
+                         unw_word_t           ip UNUSED)
 {
   Elf_W(Phdr) *phdr, *ptxt = NULL, *peh_hdr = NULL, *pdyn = NULL;
-  unw_word_t addr, eh_frame_start, fde_count, load_base;
+  unw_word_t addr, eh_frame_start, fde_count, loadoff, load_base;
   unw_word_t max_load_addr = 0;
   unw_word_t start_ip = to_unw_word (-1);
   unw_word_t end_ip = 0;
@@ -50,7 +53,7 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
   unw_accessors_t *a;
   Elf_W(Ehdr) *ehdr;
 #if UNW_TARGET_ARM
-  const Elf_W(Phdr) *parm_exidx = NULL;
+  const Elf_W(Phdr) *param_exidx = NULL;
 #endif
   int i, ret, found = 0;
 
@@ -73,8 +76,18 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
           if (phdr[i].p_vaddr + phdr[i].p_memsz > end_ip)
             end_ip = phdr[i].p_vaddr + phdr[i].p_memsz;
 
-          if (phdr[i].p_offset == mapoff)
+          /* Find the PT_LOAD segment that corresponds to the memory mapping.
+             mapoff (from /proc/PID/maps) equals the p_offset of the mapped
+             segment, so an exact p_offset == mapoff match is unambiguous.
+             Among multiple exact matches (unusual), prefer PF_X.  When no
+             segment has p_offset == mapoff (e.g. vDSO), fall back to the
+             first PF_X segment. */
+          if (phdr[i].p_offset == mapoff) {
+            if (ptxt == NULL || (phdr[i].p_flags & PF_X) == PF_X)
+              ptxt = phdr + i;
+          } else if ((phdr[i].p_flags & PF_X) == PF_X && ptxt == NULL) {
             ptxt = phdr + i;
+          }
           if ((uintptr_t) edi->ei.image + phdr->p_filesz > max_load_addr)
             max_load_addr = (uintptr_t) edi->ei.image + phdr->p_filesz;
           break;
@@ -92,7 +105,7 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
 
 #if UNW_TARGET_ARM
         case PT_ARM_EXIDX:
-          parm_exidx = phdr + i;
+          param_exidx = phdr + i;
           break;
 #endif
 
@@ -104,19 +117,20 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
   if (!ptxt)
     return 0;
 
-  load_base = segbase - ptxt->p_vaddr;
+  loadoff = mapoff + (ptxt->p_vaddr - ptxt->p_offset);
+  load_base = segbase - loadoff;
   start_ip += load_base;
   end_ip += load_base;
 
   if (peh_hdr)
     {
-      if (pdyn)
+      Elf_W(Dyn) *dyn = (Elf_W(Dyn) *)elf_w (get_program_segment) (&edi->ei, pdyn, NULL);
+      if (dyn)
         {
-          /* For dynamicly linked executables and shared libraries,
+          /* For dynamically linked executables and shared libraries,
              DT_PLTGOT is the value that data-relative addresses are
              relative to for that object.  We call this the "gp".  */
-                Elf_W(Dyn) *dyn = (Elf_W(Dyn) *)(pdyn->p_offset
-                                                 + (char *) edi->ei.image);
+
           for (; dyn->d_tag != DT_NULL; ++dyn)
             if (dyn->d_tag == DT_PLTGOT)
               {
@@ -132,8 +146,13 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
            absolute.  */
         edi->di_cache.gp = 0;
 
-      hdr = (struct dwarf_eh_frame_hdr *) (peh_hdr->p_offset
-                                           + (char *) edi->ei.image);
+      hdr = (struct dwarf_eh_frame_hdr *) elf_w (get_program_segment) (&edi->ei, peh_hdr, NULL);
+      if (!hdr)
+        {
+          Debug (1, "table `%s' missing\n", path);
+          return -UNW_ENOINFO;
+        }
+
       if (hdr->version != DW_EH_VERSION)
         {
           Debug (1, "table `%s' has unexpected version %d\n",
@@ -163,63 +182,54 @@ dwarf_find_unwind_table (struct elf_dyn_info *edi, unw_addr_space_t as,
                                              &fde_count, NULL)) < 0)
         return -UNW_ENOINFO;
 
-      if (hdr->table_enc != (DW_EH_PE_datarel | DW_EH_PE_sdata4))
+      /* A value of DW_EH_PE_omit indicates the binary search table is not present. */
+      if (hdr->table_enc == DW_EH_PE_omit)
+        return -UNW_ENOINFO;
+
+      if (hdr->table_enc != (DW_EH_PE_datarel | DW_EH_PE_sdata4)
+          && hdr->table_enc != (DW_EH_PE_datarel | DW_EH_PE_sdata8))
         {
-    #if 1
-          abort ();
-    #else
-          unw_word_t eh_frame_end;
+          Debug (4, "EH table has encoding 0x%x; cannot use binary search\n",
+                 hdr->table_enc);
 
-          /* If there is no search table or it has an unsupported
-             encoding, fall back on linear search.  */
-          if (hdr->table_enc == DW_EH_PE_omit)
-            Debug (4, "EH lacks search table; doing linear search\n");
-          else
-            Debug (4, "EH table has encoding 0x%x; doing linear search\n",
-                   hdr->table_enc);
-
-          eh_frame_end = max_load_addr; /* XXX can we do better? */
-
-          if (hdr->fde_count_enc == DW_EH_PE_omit)
-            fde_count = ~0UL;
-          if (hdr->eh_frame_ptr_enc == DW_EH_PE_omit)
-            abort ();
-
-          return linear_search (unw_local_addr_space, ip,
-                                eh_frame_start, eh_frame_end, fde_count,
-                                pi, need_unwind_info, NULL);
-    #endif
+          /* Cannot build a binary search table for unsupported encoding;
+             return 0 so the caller can fall back to other methods.  */
+          return 0;
         }
 
-      edi->di_cache.start_ip = start_ip;
-      edi->di_cache.end_ip = end_ip;
-      edi->di_cache.load_offset = 0;
-      edi->di_cache.format = UNW_INFO_FORMAT_REMOTE_TABLE;
-      edi->di_cache.u.rti.name_ptr = 0;
-      /* two 32-bit values (ip_offset/fde_offset) per table-entry: */
-      edi->di_cache.u.rti.table_len = (fde_count * 8) / sizeof (unw_word_t);
-      edi->di_cache.u.rti.table_data = ((load_base + peh_hdr->p_vaddr)
+      {
+        int is_sdata8 = (hdr->table_enc == (DW_EH_PE_datarel | DW_EH_PE_sdata8));
+        size_t entry_size = is_sdata8 ? 16 : 8;
+
+        edi->di_cache.start_ip = start_ip;
+        edi->di_cache.end_ip = end_ip;
+        edi->di_cache.format = is_sdata8 ? UNW_INFO_FORMAT_REMOTE_TABLE_64
+                                         : UNW_INFO_FORMAT_REMOTE_TABLE;
+        edi->di_cache.u.rti.name_ptr = 0;
+        edi->di_cache.u.rti.table_len = (fde_count * entry_size) / sizeof (unw_word_t);
+        edi->di_cache.u.rti.table_data = ((load_base + peh_hdr->p_vaddr)
                                        + (addr - to_unw_word (edi->ei.image)
                                           - peh_hdr->p_offset));
 
-      /* For the binary-search table in the eh_frame_hdr, data-relative
-         means relative to the start of that section... */
-      edi->di_cache.u.rti.segbase = ((load_base + peh_hdr->p_vaddr)
+        /* For the binary-search table in the eh_frame_hdr, data-relative
+           means relative to the start of that section... */
+        edi->di_cache.u.rti.segbase = ((load_base + peh_hdr->p_vaddr)
                                     + (to_unw_word (hdr) -
                                        to_unw_word (edi->ei.image)
                                        - peh_hdr->p_offset));
-      found = 1;
+        found = 1;
+      }
     }
 
 #if UNW_TARGET_ARM
-  if (parm_exidx)
+  if (param_exidx)
     {
       edi->di_arm.format = UNW_INFO_FORMAT_ARM_EXIDX;
       edi->di_arm.start_ip = start_ip;
       edi->di_arm.end_ip = end_ip;
       edi->di_arm.u.rti.name_ptr = to_unw_word (path);
-      edi->di_arm.u.rti.table_data = load_base + parm_exidx->p_vaddr;
-      edi->di_arm.u.rti.table_len = parm_exidx->p_memsz;
+      edi->di_arm.u.rti.table_data = load_base + param_exidx->p_vaddr;
+      edi->di_arm.u.rti.table_len = param_exidx->p_memsz;
       found = 1;
     }
 #endif

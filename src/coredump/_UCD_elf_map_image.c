@@ -27,22 +27,22 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 # include <sys/elf.h>
 #endif
 
-#include "_UCD_lib.h"
 #include "_UCD_internal.h"
+#include "ucd_file_table.h"
 
 static coredump_phdr_t *
 CD_elf_map_image(struct UCD_info *ui, coredump_phdr_t *phdr)
 {
   struct elf_image *ei = &ui->edi.ei;
 
-  if (phdr->backing_fd < 0)
+  if (phdr->p_backing_file_index == ucd_file_no_index)
     {
       /* Note: coredump file contains only phdr->p_filesz bytes.
        * We want to map bigger area (phdr->p_memsz bytes) to make sure
        * these pages are allocated, but non-accessible.
        */
       /* addr, length, prot, flags, fd, fd_offset */
-      ei->image = mmap(NULL, phdr->p_memsz, PROT_READ, MAP_PRIVATE, ui->coredump_fd, phdr->p_offset);
+      ei->image = mi_mmap(NULL, phdr->p_memsz, PROT_READ, MAP_PRIVATE, ui->coredump_fd, phdr->p_offset);
       if (ei->image == MAP_FAILED)
         {
           ei->image = NULL;
@@ -53,30 +53,23 @@ CD_elf_map_image(struct UCD_info *ui, coredump_phdr_t *phdr)
       if (remainder_len > 0)
         {
           void *remainder_base = (char*) ei->image + phdr->p_filesz;
-          munmap(remainder_base, remainder_len);
+          mi_munmap(remainder_base, remainder_len);
         }
     } else {
-      /* We have a backing file for this segment.
-       * This file is always longer than phdr->p_memsz,
-       * and if phdr->p_filesz !=0, first phdr->p_filesz bytes in coredump
-       * are the same as first bytes in the file. (Thus no need to map coredump)
-       * We map the entire file:
-       * unwinding may need data which is past phdr->p_memsz bytes.
-       */
+      ucd_file_t *ucd_file = ucd_file_table_at(&ui->ucd_file_table, phdr->p_backing_file_index);
+      if (ucd_file == NULL)
+        return NULL;
       /* addr, length, prot, flags, fd, fd_offset */
-      ei->image = mmap(NULL, phdr->backing_filesize, PROT_READ, MAP_PRIVATE, phdr->backing_fd, 0);
-      if (ei->image == MAP_FAILED)
-        {
-          ei->image = NULL;
-          return NULL;
-        }
-      ei->size = phdr->backing_filesize;
+      ei->image = ucd_file_map (ucd_file);
+      if (ei->image == NULL)
+        return NULL;
+      ei->size = ucd_file->size;
     }
 
   /* Check ELF header for sanity */
   if (!elf_w(valid_object)(ei))
     {
-      munmap(ei->image, ei->size);
+      mi_munmap(ei->image, ei->size);
       ei->image = NULL;
       ei->size = 0;
       return NULL;

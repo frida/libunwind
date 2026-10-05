@@ -1,0 +1,444 @@
+name: CI - Linux - GNU
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - '**'
+      - '!README.md'
+      - '!doc/**'
+      - '!.**'
+      - '.github/workflows/CI-linux-gnu.yml'
+  push:
+    branches:
+      - v[0-9].*
+      - master
+
+jobs:
+  build-gnu-native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20 # Anything more than about 20 minutes is likely a testsuite hang.
+    name: ${{ matrix.target.triple }} (native) ${{ matrix.toolchain.compiler }} ${{ matrix.optimization.CFLAGS }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { arch: i686,   triple: i686-pc-linux-gnu,   CFLAGS: -m32 }
+          - { arch: x86_64, triple: x86_64-pc-linux-gnu, CFLAGS:      }
+        toolchain:
+          - { compiler: gcc,   CC: gcc-14,   CXX: g++-14     }
+          - { compiler: clang, CC: clang-18, CXX: clang++-18 }
+        optimization:
+          - { CFLAGS: -O0 }
+          - { CFLAGS: -O3 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install ${{ matrix.target.triple }} Toolchain
+        run: |
+          sudo apt update
+          sudo apt install -y g++-14-multilib abigail-tools
+
+      - name: Configure
+        run: |
+          set -x
+          autoreconf -i
+          mkdir build
+          cd build
+          ../configure --build=x86_64-pc-linux-gnu --host=${{ matrix.target.triple }} --enable-debug --enable-coredump --enable-cxx-exceptions
+        env:
+          CC: ${{ matrix.toolchain.CC }}
+          CXX: ${{ matrix.toolchain.CXX }}
+          CFLAGS: "${{ matrix.target.CFLAGS }} ${{ matrix.optimization.CFLAGS }} -g -Wall -Wextra -fstrict-aliasing -Wstrict-aliasing -Werror=strict-aliasing"
+          CXXFLAGS: "${{ matrix.target.CFLAGS }} ${{ matrix.optimization.CFLAGS }} -g -Wall -Wextra -fstrict-aliasing -Wstrict-aliasing -Werror=strict-aliasing"
+          LDFLAGS: ${{ matrix.target.CFLAGS }}
+
+      - name: Build
+        run: |
+          make -C build -j$(nproc)
+
+      - name: Check ABI
+        if: ${{ success() }}
+        run:
+          make -C build/src abi-check
+
+      - name: Test (native)
+        if: ${{ success() }}
+        run: |
+          set -x
+          sudo bash -c 'echo core.%p.%p > /proc/sys/kernel/core_pattern'
+          ulimit -c unlimited
+          make -C build check -j$(nproc)
+        env:
+          UNW_DEBUG_LEVEL: 4
+
+      - name: Upload Test Logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ matrix.config.triple }}-${{ matrix.toolchain.compiler }}${{ matrix.optimization.CFLAGS }}
+          path: |
+            **/test-suite.log
+            **/config.log
+          if-no-files-found: warn
+
+
+  build-gnu-cross:
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ matrix.config.container }}
+      options: --privileged
+    timeout-minutes: 30 # Anything more than about 30 minutes is likely a testsuite hang.
+    name: ${{ matrix.config.host }} (cross)
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {target: aarch64,  host: aarch64-linux-gnu,       qemu: aarch64,  gccver: 14, container: ubuntu:26.04, dpkg_arch: arm64    }
+          - {target: alpha,    host: alpha-linux-gnu,         qemu: alpha,    gccver: 14, container: ubuntu:26.04 }
+          - {target: armhf,    host: arm-linux-gnueabihf,     qemu: arm,      gccver: 14, container: ubuntu:26.04, dpkg_arch: armhf    }
+          - {target: arm,      host: arm-linux-gnueabi,       qemu: arm,      gccver: 14, container: ubuntu:26.04 }
+          - {target: hppa,     host: hppa-linux-gnu,          qemu: hppa,     gccver: 14, container: ubuntu:26.04 }
+          - {target: loongarch64, host: loongarch64-linux-gnu, qemu: loongarch64, gccver: 14, container: ubuntu:26.04 }
+          - {target: mips64el, host: mips64el-linux-gnuabi64, qemu: mips64el, gccver: 14, container: ubuntu:24.04 }
+          - {target: mips64,   host: mips64-linux-gnuabi64,   qemu: mips64,   gccver: 14, container: ubuntu:24.04 }
+          - {target: mipsn32el, host: mips64el-linux-gnuabin32, qemu: mipsn32el, gccver: 14, container: ubuntu:24.04, cc: "mips64el-linux-gnuabi64-gcc-14 -mabi=n32", cxx: "mips64el-linux-gnuabi64-g++-14 -mabi=n32", packages: "g++-14-multilib-mips64el-linux-gnuabi64", cross_lib: "/usr/mips64el-linux-gnuabi64" }
+          - {target: mipsn32,   host: mips64-linux-gnuabin32,   qemu: mipsn32,   gccver: 14, container: ubuntu:24.04, cc: "mips64-linux-gnuabi64-gcc-14 -mabi=n32",   cxx: "mips64-linux-gnuabi64-g++-14 -mabi=n32",   packages: "g++-14-multilib-mips64-linux-gnuabi64",   cross_lib: "/usr/mips64-linux-gnuabi64" }
+          - {target: mipsel,   host: mipsel-linux-gnu,        qemu: mipsel,   gccver: 14, container: ubuntu:24.04 }
+          - {target: mips,     host: mips-linux-gnu,          qemu: mips,     gccver: 14, container: ubuntu:24.04 }
+          - {target: ppc64,    host: powerpc64-linux-gnu,     qemu: ppc64,    gccver: 14, container: ubuntu:26.04, qemu_skip: &ppc64_qemu_skip "Gtest-bt:Gtest-concurrent:Gtest-resume-sig:Gtest-resume-sig-rt:Gtest-trace:Ltest-bt:Ltest-concurrent:Ltest-init-local-signal:Ltest-resume-sig:Ltest-resume-sig-rt:Ltest-sig-context:Ltest-sig-first-insn:Ltest-trace:test-async-sig" }
+          - {target: ppc64le,  host: powerpc64le-linux-gnu,   qemu: ppc64le,  gccver: 14, container: ubuntu:26.04, dpkg_arch: ppc64el,  qemu_skip: *ppc64_qemu_skip }
+          - {target: ppc,      host: powerpc-linux-gnu,       qemu: ppc,      gccver: 14, container: ubuntu:26.04 }
+          - {target: riscv64,  host: riscv64-linux-gnu,       qemu: riscv64,  gccver: 14, container: ubuntu:26.04, dpkg_arch: riscv64 }
+          - {target: s390x,    host: s390x-linux-gnu,         qemu: s390x,    gccver: 14, container: ubuntu:26.04, dpkg_arch: s390x }
+          - {target: sh4,      host: sh4-linux-gnu,           qemu: sh4,      gccver: 14, container: ubuntu:26.04, qemu_skip: &sh4_qemu_skip "Gtest-sig-context:Gtest-trace:Ltest-init-local-signal:Ltest-sig-context:Ltest-sig-first-insn:Ltest-trace:test-async-sig" }
+          - {target: sparc64,  host: sparc64-linux-gnu,       qemu: sparc64,  gccver: 14, container: ubuntu:26.04, qemu_skip: &sparc64_qemu_skip "Gtest-exc:Gtest-resume-sig:Gtest-resume-sig-rt:Ltest-cxx-exceptions:Ltest-exc:Ltest-resume-sig:Ltest-resume-sig-rt" }
+
+    steps:
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y git
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install ${{ matrix.config.host }} Toolchain
+        run: |
+          if [ -n "$DPKG_ARCH" ]; then
+            dpkg --add-architecture "$DPKG_ARCH"
+            CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+            # Restrict existing sources to amd64 so archive.ubuntu.com doesn't
+            # 404 on ports-only arches; ports.ubuntu.com handles $DPKG_ARCH.
+            for f in /etc/apt/sources.list.d/*.sources; do
+              [ -f "$f" ] && sed -i '/^Architectures:/!s/^Types:/Architectures: amd64\nTypes:/' "$f"
+            done
+            sed -i 's/^deb http/deb [arch=amd64] http/' /etc/apt/sources.list 2>/dev/null || true
+            echo "deb [arch=$DPKG_ARCH] http://ports.ubuntu.com/ubuntu-ports $CODENAME main restricted universe" \
+              >> /etc/apt/sources.list.d/ports.list
+            echo "deb [arch=$DPKG_ARCH] http://ports.ubuntu.com/ubuntu-ports $CODENAME-updates main restricted universe" \
+              >> /etc/apt/sources.list.d/ports.list
+            apt-get update
+            # zlib1g and friends are Multi-Arch: same, so the foreign-arch
+            # package must match the installed amd64 version exactly. The
+            # base image lags the archive, so upgrade before pulling in any
+            # :$DPKG_ARCH development packages.
+            apt-get upgrade -y
+          fi
+          apt-get install -y autoconf automake libtool make \
+                             ${{ matrix.config.packages || format('g++-{0}-{1}', matrix.config.gccver, matrix.config.host) }} \
+                             qemu-user \
+                             xz-utils \
+                             abigail-tools \
+                             ${DPKG_ARCH:+liblzma-dev:$DPKG_ARCH}
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          DPKG_ARCH: ${{ matrix.config.dpkg_arch || '' }}
+
+      - name: Configure with ${{ matrix.config.cc }}
+        run: |
+          set -x
+          autoreconf -i
+          mkdir build
+          cd build
+          ../configure --build=$(config/config.guess) \
+                       --host=${{ matrix.config.host }} \
+                       --with-testdriver="$(pwd)/libtool execute $(pwd)/../scripts/qemu-test-driver" \
+                       --enable-debug --enable-coredump --enable-cxx-exceptions
+        env:
+          CC: ${{ matrix.config.cc || format('{0}-gcc-{1}', matrix.config.host, matrix.config.gccver) }}
+          CXX: ${{ matrix.config.cxx || format('{0}-g++-{1}', matrix.config.host, matrix.config.gccver) }}
+
+      - name: Build
+        run: |
+          make -C build -j$(nproc)
+        env:
+          CFLAGS: "-Wall -Wextra -g -Og -fstrict-aliasing -Wstrict-aliasing -Werror=strict-aliasing"
+
+      - name: ABI Check
+        run: make -C build/src abi-check
+
+      - name: Test
+        run: |
+          set -x
+          bash -c 'echo core.%p.%p > /proc/sys/kernel/core_pattern'
+          ulimit -c unlimited
+          cd build
+          make check -j$(nproc) LOG_DRIVER_FLAGS="--qemu-arch ${{ matrix.config.qemu }}${{ matrix.config.qemu_skip && format(' --qemu-skip={0}', matrix.config.qemu_skip) || '' }}" \
+                     QEMU_LD_PREFIX="$CROSS_LIB" \
+                     LDFLAGS="-L$CROSS_LIB/lib"
+        env:
+          UNW_DEBUG_LEVEL: 4
+          CROSS_LIB: ${{ matrix.config.cross_lib || format('/usr/{0}', matrix.config.host) }}
+
+      - name: Upload Test Logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ matrix.config.host }}
+          path: |
+            **/test-suite.log
+            **/config.log
+          if-no-files-found: warn
+
+
+  build-gnu-native-meson:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20 # Anything more than about 20 minutes is likely a testsuite hang.
+    name: ${{ matrix.target.triple }} (meson) ${{ matrix.toolchain.compiler }} ${{ matrix.optimization.buildtype }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { arch: i686,   triple: i686-pc-linux-gnu   }
+          - { arch: x86_64, triple: x86_64-pc-linux-gnu }
+        toolchain:
+          - { compiler: gcc,   CC: gcc-14,   CXX: g++-14     }
+          - { compiler: clang, CC: clang-18, CXX: clang++-18 }
+        optimization:
+          - { buildtype: debugoptimized, optimization: '0' }
+          - { buildtype: release,        optimization: '3' }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install ${{ matrix.target.triple }} Toolchain
+        run: |
+          if [ '${{ matrix.target.arch }}' = 'i686' ]; then
+            sudo dpkg --add-architecture i386
+          fi
+          sudo apt update
+          sudo apt install -y g++-14-multilib meson ninja-build abigail-tools \
+                               liblzma-dev zlib1g-dev
+          if [ '${{ matrix.target.arch }}' = 'i686' ]; then
+            sudo apt install -y liblzma-dev:i386 zlib1g-dev:i386
+          fi
+
+      - name: Configure with Meson
+        run: |
+          set -x
+          extra_cross_file=
+          if [ '${{ matrix.target.arch }}' = 'i686' ]; then
+            {
+              printf '[binaries]\n'
+              printf "c = '%s'\n"   "${{ matrix.toolchain.CC }}"
+              printf "cpp = '%s'\n" "${{ matrix.toolchain.CXX }}"
+              printf "ar = 'ar'\n"
+              printf "strip = 'strip'\n"
+              printf '\n[built-in options]\n'
+              printf "c_args = ['-m32']\n"
+              printf "cpp_args = ['-m32']\n"
+              printf "c_link_args = ['-m32']\n"
+              printf "cpp_link_args = ['-m32']\n"
+              printf '\n[host_machine]\n'
+              printf "system = 'linux'\n"
+              printf "cpu_family = 'x86'\n"
+              printf "cpu = 'i686'\n"
+              printf "endian = 'little'\n"
+              printf '\n[properties]\n'
+              printf 'needs_exe_wrapper = false\n'
+            } > /tmp/meson-ci-i686.ini
+            cat /tmp/meson-ci-i686.ini
+            extra_cross_file='--cross-file /tmp/meson-ci-i686.ini'
+          fi
+
+          meson setup build-meson \
+            --buildtype=${{ matrix.optimization.buildtype }} --optimization=${{ matrix.optimization.optimization }} \
+            -Ddebug_logs=true -Dminidebuginfo=enabled -Dzlibdebuginfo=enabled -Dcxx_exceptions=enabled \
+            $extra_cross_file
+        env:
+          CC: ${{ matrix.toolchain.CC }}
+          CXX: ${{ matrix.toolchain.CXX }}
+          CFLAGS: "-g -Wall -Wextra -fstrict-aliasing -Wstrict-aliasing -Werror=strict-aliasing"
+          CXXFLAGS: "-g -Wall -Wextra -fstrict-aliasing -Wstrict-aliasing -Werror=strict-aliasing"
+
+      - name: Build
+        run: meson compile -C build-meson -j$(nproc)
+
+      - name: Test
+        if: ${{ success() }}
+        run: |
+          set -x
+          sudo bash -c 'echo core.%p.%p > /proc/sys/kernel/core_pattern'
+          ulimit -c unlimited
+          meson test -C build-meson -j$(nproc) --print-errorlogs
+        env:
+          UNW_DEBUG_LEVEL: 4
+
+      - name: Upload Test Logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ matrix.target.triple }}-meson-${{ matrix.toolchain.compiler }}-${{ matrix.optimization.buildtype }}
+          path: build-meson/meson-logs/
+          if-no-files-found: warn
+
+
+  build-gnu-cross-meson:
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ matrix.config.container }}
+      options: --privileged
+    timeout-minutes: 30
+    name: ${{ matrix.config.host }} (meson)
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {host: aarch64-linux-gnu,         qemu: aarch64,   gccver: 14, container: ubuntu:26.04, meson_cross: aarch64-unknown-linux-gnu, dpkg_arch: arm64 }
+          - {host: alpha-linux-gnu,           qemu: alpha,     gccver: 14, container: ubuntu:26.04, meson_cross: alpha-unknown-linux-gnu }
+          - {host: arm-linux-gnueabihf,       qemu: arm,       gccver: 14, container: ubuntu:26.04, meson_cross: arm-linux-gnueabihf, dpkg_arch: armhf }
+          - {host: arm-linux-gnueabi,         qemu: arm,       gccver: 14, container: ubuntu:26.04, meson_cross: arm-linux-gnueabi }
+          - {host: hppa-linux-gnu,            qemu: hppa,      gccver: 14, container: ubuntu:26.04, meson_cross: hppa-linux-gnu }
+          - {host: loongarch64-linux-gnu,     qemu: loongarch64, gccver: 14, container: ubuntu:26.04, meson_cross: loongarch64-linux-gnu }
+          - {host: mips64el-linux-gnuabi64,   qemu: mips64el,  gccver: 14, container: ubuntu:24.04, meson_cross: mips64el-unknown-linux-gnu }
+          - {host: mips64-linux-gnuabi64,     qemu: mips64,    gccver: 14, container: ubuntu:24.04, meson_cross: mips64-unknown-linux-gnu }
+          - {host: mips64el-linux-gnuabin32,  qemu: mipsn32el, gccver: 14, container: ubuntu:24.04, meson_cross: mipsn32el-unknown-linux-gnu,
+             meson_gcc_prefix: mips64el-linux-gnuabi64, gcc_flags: -mabi=n32, meson_c_args: "'-mabi=n32'",
+             packages: g++-14-multilib-mips64el-linux-gnuabi64 }
+          - {host: mips64-linux-gnuabin32,    qemu: mipsn32,   gccver: 14, container: ubuntu:24.04, meson_cross: mipsn32-unknown-linux-gnu,
+             meson_gcc_prefix: mips64-linux-gnuabi64, gcc_flags: -mabi=n32, meson_c_args: "'-mabi=n32'",
+             packages: g++-14-multilib-mips64-linux-gnuabi64 }
+          - {host: mipsel-linux-gnu,          qemu: mipsel,    gccver: 14, container: ubuntu:24.04, meson_cross: mipsel-linux-gnu }
+          - {host: mips-linux-gnu,            qemu: mips,      gccver: 14, container: ubuntu:24.04, meson_cross: mips-linux-gnu }
+          - {host: powerpc64-linux-gnu,       qemu: ppc64,     gccver: 14, container: ubuntu:26.04, meson_cross: powerpc64-unknown-linux-gnu,
+             qemu_xfail: *ppc64_qemu_skip }
+          - {host: powerpc64le-linux-gnu,     qemu: ppc64le,   gccver: 14, container: ubuntu:26.04, meson_cross: powerpc64le-unknown-linux-gnu,
+             qemu_xfail: *ppc64_qemu_skip, dpkg_arch: ppc64el }
+          - {host: powerpc-linux-gnu,         qemu: ppc,       gccver: 14, container: ubuntu:26.04, meson_cross: powerpc-unknown-linux-gnu }
+          - {host: riscv64-linux-gnu,         qemu: riscv64,   gccver: 14, container: ubuntu:26.04, meson_cross: riscv64-unknown-linux-gnu, dpkg_arch: riscv64 }
+          - {host: s390x-linux-gnu,           qemu: s390x,     gccver: 14, container: ubuntu:26.04, meson_cross: s390x-ibm-linux-gnu, dpkg_arch: s390x }
+          - {host: sh4-linux-gnu,             qemu: sh4,       gccver: 14, container: ubuntu:26.04, meson_cross: sh4-linux-gnu,
+             qemu_xfail: *sh4_qemu_skip }
+          - {host: sparc64-linux-gnu,         qemu: sparc64,   gccver: 14, container: ubuntu:26.04, meson_cross: sparc64-linux-gnu,
+             qemu_xfail: *sparc64_qemu_skip }
+
+    steps:
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y git
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install ${{ matrix.config.host }} Toolchain
+        run: |
+          if [ -n "$DPKG_ARCH" ]; then
+            dpkg --add-architecture "$DPKG_ARCH"
+            CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+            # Restrict existing sources to amd64 so archive.ubuntu.com doesn't
+            # 404 on ports-only arches; ports.ubuntu.com handles $DPKG_ARCH.
+            for f in /etc/apt/sources.list.d/*.sources; do
+              [ -f "$f" ] && sed -i '/^Architectures:/!s/^Types:/Architectures: amd64\nTypes:/' "$f"
+            done
+            sed -i 's/^deb http/deb [arch=amd64] http/' /etc/apt/sources.list 2>/dev/null || true
+            echo "deb [arch=$DPKG_ARCH] http://ports.ubuntu.com/ubuntu-ports $CODENAME main restricted universe" \
+              >> /etc/apt/sources.list.d/ports.list
+            echo "deb [arch=$DPKG_ARCH] http://ports.ubuntu.com/ubuntu-ports $CODENAME-updates main restricted universe" \
+              >> /etc/apt/sources.list.d/ports.list
+            apt-get update
+            # zlib1g and friends are Multi-Arch: same, so the foreign-arch
+            # package must match the installed amd64 version exactly. The
+            # base image lags the archive, so upgrade before pulling in any
+            # :$DPKG_ARCH development packages.
+            apt-get upgrade -y
+          fi
+          apt-get install -y meson ninja-build abigail-tools \
+                             ${{ matrix.config.packages || format('g++-{0}-{1}', matrix.config.gccver, matrix.config.host) }} \
+                             qemu-user \
+                             ${DPKG_ARCH:+liblzma-dev:$DPKG_ARCH} \
+                             ${DPKG_ARCH:+zlib1g-dev:$DPKG_ARCH}
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          DPKG_ARCH: ${{ matrix.config.dpkg_arch || '' }}
+
+      - name: Configure with Meson
+        run: |
+          set -x
+          export PATH="$PWD/scripts:$PATH"
+
+          # mipsn32 uses the n64 toolchain prefix; all others use host directly
+          gcc_prefix='${{ matrix.config.meson_gcc_prefix || matrix.config.host }}'
+          cc="${gcc_prefix}-gcc-${{ matrix.config.gccver }}"
+          cxx="${gcc_prefix}-g++-${{ matrix.config.gccver }}"
+          ar="${gcc_prefix}-ar"
+          nm="${gcc_prefix}-nm"
+          strip_tool="${gcc_prefix}-strip"
+
+          ew="['$PWD/scripts/meson-qemu-exe-wrapper', '--qemu=qemu-${{ matrix.config.qemu }}', '--gcc=${cc}'"
+          [ -n '${{ matrix.config.gcc_flags }}' ]  && ew="${ew}, '--gcc-flags=${{ matrix.config.gcc_flags }}'"
+          [ -n '${{ matrix.config.qemu_xfail }}' ] && ew="${ew}, '--xfail=${{ matrix.config.qemu_xfail }}'"
+          ew="${ew}]"
+
+          {
+            printf '[binaries]\n'
+            printf "c = '%s'\n"   "${cc}"
+            printf "cpp = '%s'\n" "${cxx}"
+            printf "ar = '%s'\n"  "${ar}"
+            printf "nm = '%s'\n"  "${nm}"
+            printf "strip = '%s'\n" "${strip_tool}"
+            printf "exe_wrapper = %s\n" "${ew}"
+            if [ -n "${{ matrix.config.meson_c_args }}" ]; then
+              printf '\n[built-in options]\n'
+              printf "c_args = [%s]\n"       "${{ matrix.config.meson_c_args }}"
+              printf "cpp_args = [%s]\n"     "${{ matrix.config.meson_c_args }}"
+              printf "c_link_args = [%s]\n"  "${{ matrix.config.meson_c_args }}"
+              printf "cpp_link_args = [%s]\n" "${{ matrix.config.meson_c_args }}"
+            fi
+          } > /tmp/meson-ci-binaries.ini
+          cat /tmp/meson-ci-binaries.ini
+
+          meson setup build-meson \
+            --optimization=g \
+            -Dcxx_exceptions=enabled \
+            --cross-file cross/${{ matrix.config.meson_cross }}.ini \
+            --cross-file /tmp/meson-ci-binaries.ini
+
+      - name: Build
+        run: meson compile -C build-meson -j$(nproc)
+
+      - name: Test
+        run: |
+          set -x
+          bash -c 'echo core.%p.%p > /proc/sys/kernel/core_pattern'
+          ulimit -c unlimited
+          meson test -C build-meson -j$(nproc) --timeout-multiplier 2
+        env:
+          UNW_DEBUG_LEVEL: 4
+
+      - name: Upload Test Logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ matrix.config.host }}-meson
+          path: |
+            build-meson/meson-logs/
+          if-no-files-found: warn

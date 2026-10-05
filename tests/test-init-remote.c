@@ -39,8 +39,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <string.h>
 #include <libunwind.h>
 
-#define panic(args...)				\
-	{ fprintf (stderr, args); exit (-1); }
+#define panic(...)				\
+	{ fprintf (stderr, __VA_ARGS__); exit (-1); }
 
 int verbose;
 
@@ -51,7 +51,7 @@ do_backtrace (void)
   unw_word_t ip, sp, off;
   unw_cursor_t cursor;
   unw_context_t uc;
-  int ret;
+  int ret, num_frames = 0;
 
   unw_getcontext (&uc);
   if (unw_init_remote (&cursor, unw_local_addr_space, &uc) < 0)
@@ -63,16 +63,25 @@ do_backtrace (void)
       unw_get_reg (&cursor, UNW_REG_SP, &sp);
       buf[0] = '\0';
       if (unw_get_proc_name (&cursor, name, sizeof (name), &off) == 0)
-	{
-	  if (off)
-	    snprintf (buf, sizeof (buf), "<%s+0x%lx>", name, (long) off);
-	  else
-	    snprintf (buf, sizeof (buf), "<%s>", name);
-	}
+        {
+          if (off)
+            snprintf (buf, sizeof (buf), "<%s+0x%lx>", name, (long) off);
+          else
+            snprintf (buf, sizeof (buf), "<%s>", name);
+        }
       if (verbose)
-	printf ("%016lx %-32s (sp=%016lx)\n", (long) ip, buf, (long) sp);
+        printf ("%016lx %-32s (sp=%016lx)\n", (long) ip, buf, (long) sp);
+
+      char filename[128];
+      unw_word_t file_offset;
+      if (unw_get_elf_filename (&cursor,filename, sizeof (filename), &file_offset) == UNW_ESUCCESS)
+            printf (" [%s+0x%lx]\n", filename, (long) file_offset);
 
       ret = unw_step (&cursor);
+#ifdef UNW_TARGET_ARM
+      if (ret == -UNW_ESTOPUNWIND)
+        break;
+#endif
       if (ret < 0)
 	{
 	  unw_get_reg (&cursor, UNW_REG_IP, &ip);
@@ -80,8 +89,16 @@ do_backtrace (void)
 		  ret, (long) ip);
 	  return -1;
 	}
+
+      ++num_frames;
     }
   while (ret > 0);
+
+  if (num_frames < 3)
+    {
+      printf ("FAILURE: only found %d frames\n", num_frames);
+      return -1;
+    }
 
   return 0;
 }

@@ -50,6 +50,197 @@ typedef struct
   /* many more fields here, but they are unused by this code */
 } stack_frame_t;
 
+/* Read a single 32-bit instruction at ADDR via the accessors.  The access_mem
+   callback reads sizeof(unw_word_t) (8 bytes on ppc64) at a time and requires
+   the kernel's word alignment (PTRACE_PEEKDATA on Linux rejects misaligned
+   addresses), so we always read the containing 8-byte-aligned word and
+   extract the half we want.  */
+static int
+_read_instruction (struct dwarf_cursor *c, unw_word_t addr, uint32_t *insn)
+{
+  unw_accessors_t *a = unw_get_accessors (c->as);
+  unw_word_t aligned = addr & ~(unw_word_t) 7;
+  unw_word_t w;
+
+  if ((*a->access_mem) (c->as, aligned, &w, 0, c->as_arg) < 0)
+    return -1;
+
+  /* On BE ppc, the low-addressed 4 bytes live in the high 32 bits of the
+     8-byte word; on LE it's the opposite.  */
+  if (c->as->big_endian)
+    *insn = (addr == aligned) ? (uint32_t) (w >> 32) : (uint32_t) w;
+  else
+    *insn = (addr == aligned) ? (uint32_t) w : (uint32_t) (w >> 32);
+  return 0;
+}
+
+/* Recognise BE ELFv1 PLT call stubs, e.g.:
+      std   r2, 40(r1)
+      addis r11, r2, X
+      ld    r12, X(r11)
+      mtctr r12
+      ld    r2, X(r11)
+      bctr
+   IP may be anywhere inside the 24-byte stub.  */
+static int
+_is_plt_entry_elfv1 (struct dwarf_cursor *c)
+{
+  static const struct { uint32_t pattern, mask; } insns[6] =
+    {
+      {0xf8410028, 0xffffffff},  /* std   r2, 40(r1)  */
+      {0x3d620000, 0xffff0000},  /* addis r11, r2, X  */
+      {0xe98b0000, 0xffff0000},  /* ld    r12, X(r11) */
+      {0x7d8903a6, 0xffffffff},  /* mtctr r12         */
+      {0xe84b0000, 0xffff0000},  /* ld    r2, X(r11)  */
+      {0x4e800420, 0xffffffff},  /* bctr              */
+    };
+  int offset;
+
+  for (offset = 0; offset < 6; ++offset)
+    {
+      unw_word_t start = c->ip - (unw_word_t) (offset * 4);
+      int i, ok = 1;
+
+      for (i = 0; i < 6; ++i)
+        {
+          uint32_t insn;
+          if (_read_instruction (c, start + i * 4, &insn) < 0
+              || (insn & insns[i].mask) != insns[i].pattern)
+            {
+              ok = 0;
+              break;
+            }
+        }
+      if (ok)
+        return 1;
+    }
+  return 0;
+}
+
+//! Recognise PLT entries
+/*! For example:
+   0x000000001000d1f0 <+0>:     18 00 41 f8     std     r2,24(r1)
+   0x000000001000d1f4 <+4>:     30 87 82 e9     ld      r12,-30928(r2)
+   0x000000001000d1f8 <+8>:     a6 03 89 7d     mtctr   r12
+   0x000000001000d1fc <+12>:    20 04 80 4e     bctr
+*/
+static int
+_is_plt_entry (struct dwarf_cursor *c)
+{
+  unw_word_t w0, w1;
+  unw_accessors_t *a;
+
+  if (c->as->big_endian)
+    return _is_plt_entry_elfv1 (c);
+
+  /*
+    A PLT (Procedure Linkage Table) is used by the dynamic linker to map the
+    relative address of a position independent function call onto the real
+    address of the function. If we attempt to unwind from any instruction
+    inside the PLT, and the PLT is missing DWARF unwind information, then
+    conventional unwinding will fail because although the function has been
+    "called" we have not yet entered the prologue and set-up the stack frame.
+
+    This code looks to see if the instruction is anywhere within a "recognised"
+    PLT entry (note that the IP could be anywhere within the PLT, so we have to
+    examine nearby instructions).
+  */
+
+  struct instruction_entry
+    {
+      uint32_t pattern;
+      uint32_t mask;
+    } instructions[4] =
+    {
+      // ppc64le
+      {0xf8410018,0xffffffff},
+      {0xe9820000,0xffff0000},
+      {0x7d8903a6,0xffffffff},
+      {0x4e800420,0xffffffff},
+    };
+
+  a = unw_get_accessors (c->as);
+
+  if( (*a->access_mem) (c->as, c->ip, &w0, 0, c->as_arg) < 0 )
+    {
+      return 0;
+    }
+
+  /*
+    NB: the following code is endian sensitive!
+
+    The current implementation is for little-endian modes, big-endian modes
+    will see the first instruction in the high bits of w0, and the second
+    instruction in the low bits of w0. Some tweaks will be needed to read from
+    the correct part of the word to support big endian modes.
+  */
+  if(( w0      & instructions[0].mask) == instructions[0].pattern &&
+     ((w0>>32) & instructions[1].mask) == instructions[1].pattern)
+  {
+    if( (*a->access_mem) (c->as, c->ip+8, &w1, 0, c->as_arg) >= 0 &&
+        ( w1      & instructions[2].mask) == instructions[2].pattern &&
+        ((w1>>32) & instructions[3].mask) == instructions[3].pattern )
+      {
+        return 1;
+      }
+    else
+      {
+        return 0;
+      }
+  }
+  else if(( w0 & instructions[2].mask) == instructions[2].pattern &&
+     ((w0>>32) & instructions[3].mask) == instructions[3].pattern)
+  {
+    w1 = w0;
+    if( (*a->access_mem) (c->as, c->ip-8, &w0, 0, c->as_arg) >= 0 &&
+        ( w0      & instructions[0].mask) == instructions[0].pattern &&
+        ((w0>>32) & instructions[1].mask) == instructions[1].pattern )
+      {
+        return 1;
+      }
+    else
+      {
+        return 0;
+      }
+  }
+  else if(( w0 & instructions[1].mask) == instructions[1].pattern &&
+     ((w0>>32) & instructions[2].mask) == instructions[2].pattern)
+  {
+    if( (*a->access_mem) (c->as, c->ip-4, &w0, 0, c->as_arg) < 0 ||
+        (*a->access_mem) (c->as, c->ip+4, &w1, 0, c->as_arg) < 0 )
+    {
+      return 0;
+    }
+  }
+  else if( (w0 & instructions[3].mask) == instructions[3].pattern )
+  {
+    if( (*a->access_mem) (c->as, c->ip-12, &w0, 0, c->as_arg) < 0 ||
+        (*a->access_mem) (c->as, c->ip-4, &w1, 0, c->as_arg) < 0 )
+    {
+      return 0;
+    }
+  }
+
+  if(( w0      & instructions[0].mask) == instructions[0].pattern &&
+     ((w0>>32) & instructions[1].mask) == instructions[1].pattern &&
+     ( w1      & instructions[2].mask) == instructions[2].pattern &&
+     ((w1>>32) & instructions[3].mask) == instructions[3].pattern )
+    {
+      return 1;
+    }
+  else
+    {
+      return 0;
+    }
+}
+
+
+int
+unw_is_plt_entry (unw_cursor_t *uc)
+{
+	return _is_plt_entry (&((struct cursor *)uc)->dwarf);
+}
+
 
 int
 unw_step (unw_cursor_t * cursor)
@@ -59,12 +250,24 @@ unw_step (unw_cursor_t * cursor)
   unw_word_t back_chain_offset, lr_save_offset, v_regs_ptr;
   struct dwarf_loc back_chain_loc, lr_save_loc, sp_loc, ip_loc, v_regs_loc;
   int ret, i;
+  int validate = c->dwarf.as->validate;
 
   Debug (1, "(cursor=%p, ip=0x%016lx)\n", c, (unsigned long) c->dwarf.ip);
 
+  /* Check for signal frame before trying DWARF-based unwinding.
+     This ensures sigcontext_format and sigcontext_addr are always set
+     when stepping through a signal trampoline, even when DWARF CFI
+     covers the trampoline.  unw_resume needs these to resume via
+     rt_sigreturn instead of setcontext().  */
+  if (unlikely (unw_is_signal_frame (cursor) > 0))
+    goto signal_frame;
+
   /* Try DWARF-based unwinding... */
 
+  c->sigcontext_format = PPC_SCF_NONE;
+  c->dwarf.as->validate = 1;
   ret = dwarf_step (&c->dwarf);
+  c->dwarf.as->validate = validate;
 
   if (ret < 0 && ret != -UNW_ENOINFO)
     {
@@ -74,65 +277,114 @@ unw_step (unw_cursor_t * cursor)
 
   if (unlikely (ret < 0))
     {
-      if (likely (unw_is_signal_frame (cursor) <= 0))
-        {
-          /* DWARF unwinding failed.  As of 09/26/2006, gcc in 64-bit mode
-             produces the mandatory level of traceback record in the code, but
-             I get the impression that this is transitory, that eventually gcc
-             will not produce any traceback records at all.  So, for now, we
-             won't bother to try to find and use these records.
-
-             We can, however, attempt to unwind the frame by using the callback
-             chain.  This is very crude, however, and won't be able to unwind
-             any registers besides the IP, SP, and LR . */
-
-          back_chain_offset = ((void *) &dummy.back_chain - (void *) &dummy);
-          lr_save_offset = ((void *) &dummy.lr_save - (void *) &dummy);
-
-          back_chain_loc = DWARF_LOC (c->dwarf.cfa + back_chain_offset, 0);
-
-          if ((ret =
-               dwarf_get (&c->dwarf, back_chain_loc, &c->dwarf.cfa)) < 0)
+      /* DWARF failed. */
+      if (_is_plt_entry (&c->dwarf))
             {
-              Debug (2,
-                 "Unable to retrieve CFA from back chain in stack frame - %d\n",
-                 ret);
-              return ret;
+              Debug (2, "found plt entry\n");
+
+              /*
+                Fallback mode that uses the link register. This is important
+                for cases where a function without unwind information has been
+                called, but not yet set-up its stack frame (basically PLT calls).
+
+                In this case we can't trust c->dwarf.cfa (the stack frame)
+                because it will currently point to the caller's stack frame -
+                but we can use the current value of the link register to get
+                back to the caller. We then have to hope that libunwind manages
+                to resume unwinding properly from the caller IP.
+              */
+              c->dwarf.loc[UNW_PPC64_NIP] = c->dwarf.loc[UNW_PPC64_LR];
+              c->dwarf.loc[UNW_PPC64_LR] = DWARF_NULL_LOC;
+              if (!DWARF_IS_NULL_LOC (c->dwarf.loc[UNW_PPC64_NIP]))
+                {
+                  ret = dwarf_get (&c->dwarf, c->dwarf.loc[UNW_PPC64_NIP], &c->dwarf.ip);
+                  if (ret < 0)
+                    {
+                      Debug (2, "failed to get pc from link register: %d\n", ret);
+                      return ret;
+                    }
+                  Debug (2, "link register = 0x%016lx\n", c->dwarf.ip);
+                  ret = 1;
+                }
+              else
+                {
+                  Debug (2, "link register was not saved\n");
+                  c->dwarf.ip = 0;
+                }
             }
-          if (c->dwarf.cfa == 0)
-            /* Unless the cursor or stack is corrupt or uninitialized we've most
-               likely hit the top of the stack */
-            return 0;
-
-          lr_save_loc = DWARF_LOC (c->dwarf.cfa + lr_save_offset, 0);
-
-          if ((ret = dwarf_get (&c->dwarf, lr_save_loc, &c->dwarf.ip)) < 0)
+          else
             {
-              Debug (2,
-                 "Unable to retrieve IP from lr save in stack frame - %d\n",
-                 ret);
-              return ret;
+              /*
+                Fallback mode that uses a conventional stack unwinding. This is
+                important for functions without proper DWARF unwind information,
+                in particular without this fallback the clone() function will not
+                unwind properly.
+
+                We do the unwind by first looking for the caller stack pointer
+                saved in the current stack frame. This will point to the caller's
+                'linkage area'. If the caller stack pointer is null, we assume we
+                have reached the top of the stack.
+
+                The address 24(SP) (where SP is the caller stack pointer) contains
+                the saved 'link register', the link register is effectively the
+                return address for the called function - so we can use the link
+                register to get an IP inside the calling function.
+
+                Note: there is no requirement for leaf functions to save the
+                stack pointer or link register, I'm not entirely sure why
+                libunwind doesn't handle this case.
+              */
+              Debug (2, "fallback\n");
+
+              back_chain_offset = ((void *) &dummy.back_chain - (void *) &dummy);
+              lr_save_offset = ((void *) &dummy.lr_save - (void *) &dummy);
+
+              back_chain_loc = DWARF_LOC (c->dwarf.cfa + back_chain_offset, 0);
+
+              if ((ret =
+                   dwarf_get (&c->dwarf, back_chain_loc, &c->dwarf.cfa)) < 0)
+                {
+                  Debug (2,
+                     "Unable to retrieve CFA from back chain in stack frame - %d\n",
+                     ret);
+                  return ret;
+                }
+              if (c->dwarf.cfa == 0)
+                /* Unless the cursor or stack is corrupt or uninitialized we've most
+                   likely hit the top of the stack */
+                return 0;
+
+              lr_save_loc = DWARF_LOC (c->dwarf.cfa + lr_save_offset, 0);
+
+              if ((ret = dwarf_get (&c->dwarf, lr_save_loc, &c->dwarf.ip)) < 0)
+                {
+                  Debug (2,
+                     "Unable to retrieve IP from lr save in stack frame - %d\n",
+                     ret);
+                  return ret;
+                }
+              ret = 1;
+              /* Mark all registers unsaved */
+              for (i = 0; i < DWARF_NUM_PRESERVED_REGS; ++i)
+                c->dwarf.loc[i] = DWARF_NULL_LOC;
             }
+    }
 
-          /* Mark all registers unsaved */
-          for (i = 0; i < DWARF_NUM_PRESERVED_REGS; ++i)
-            c->dwarf.loc[i] = DWARF_NULL_LOC;
+  goto step_done;
 
-          ret = 1;
-        }
-      else
-        {
-          /* Find the sigcontext record by taking the CFA and adjusting by
-             the dummy signal frame size.
+signal_frame:
+    {
+      /* Find the sigcontext record by taking the CFA and adjusting by
+         the dummy signal frame size.
 
-             Note that there isn't any way to determined if SA_SIGINFO was
-             set in the sa_flags parameter to sigaction when the signal
-             handler was established.  If it was not set, the ucontext
-             record is not required to be on the stack, in which case the
-             following code will likely cause a seg fault or other crash
-             condition.  */
+         Note that there isn't any way to determined if SA_SIGINFO was
+         set in the sa_flags parameter to sigaction when the signal
+         handler was established.  If it was not set, the ucontext
+         record is not required to be on the stack, in which case the
+         following code will likely cause a seg fault or other crash
+         condition.  */
 
-          unw_word_t ucontext = c->dwarf.cfa + __SIGNAL_FRAMESIZE;
+      unw_word_t ucontext = c->dwarf.cfa + __SIGNAL_FRAMESIZE;
 
           Debug (1, "signal frame, skip over trampoline\n");
 
@@ -245,69 +497,69 @@ unw_step (unw_cursor_t * cursor)
           c->dwarf.loc[UNW_PPC64_FRAME_POINTER] = DWARF_NULL_LOC;
 
           c->dwarf.loc[UNW_PPC64_F0] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R0, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R0, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F1] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R1, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R1, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F2] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R2, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R2, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F3] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R3, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R3, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F4] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R4, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R4, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F5] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R5, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R5, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F6] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R6, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R6, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F7] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R7, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R7, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F8] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R8, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R8, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F9] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R9, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R9, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F10] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R10, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R10, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F11] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R11, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R11, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F12] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R12, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R12, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F13] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R13, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R13, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F14] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R14, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R14, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F15] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R15, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R15, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F16] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R16, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R16, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F17] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R17, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R17, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F18] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R18, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R18, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F19] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R19, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R19, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F20] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R20, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R20, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F21] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R21, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R21, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F22] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R22, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R22, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F23] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R23, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R23, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F24] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R24, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R24, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F25] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R25, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R25, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F26] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R26, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R26, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F27] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R27, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R27, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F28] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R28, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R28, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F29] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R29, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R29, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F30] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R30, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R30, DWARF_LOC_TYPE_FP);
           c->dwarf.loc[UNW_PPC64_F31] =
-            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R31, 0);
+            DWARF_LOC (ucontext + UC_MCONTEXT_FREGS_R31, DWARF_LOC_TYPE_FP);
           /* Note that there is no .eh_section register column for the
              FPSCR register.  I don't know why this is.  */
 
@@ -330,69 +582,69 @@ unw_step (unw_cursor_t * cursor)
               /* The v_regs_ptr is not null.  Set all of the AltiVec locs */
 
               c->dwarf.loc[UNW_PPC64_V0] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R0, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R0, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V1] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R1, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R1, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V2] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R2, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R2, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V3] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R3, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R3, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V4] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R4, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R4, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V5] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R5, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R5, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V6] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R6, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R6, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V7] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R7, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R7, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V8] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R8, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R8, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V9] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R9, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R9, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V10] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R10, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R10, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V11] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R11, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R11, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V12] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R12, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R12, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V13] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R13, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R13, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V14] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R14, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R14, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V15] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R15, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R15, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V16] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R16, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R16, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V17] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R17, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R17, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V18] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R18, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R18, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V19] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R19, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R19, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V20] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R20, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R20, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V21] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R21, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R21, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V22] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R22, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R22, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V23] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R23, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R23, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V24] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R24, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R24, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V25] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R25, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R25, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V26] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R26, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R26, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V27] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R27, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R27, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V28] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R28, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R28, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V29] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R29, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R29, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V30] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R30, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R30, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_V31] =
-                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R31, 0);
+                DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_R31, DWARF_LOC_TYPE_V);
               c->dwarf.loc[UNW_PPC64_VRSAVE] =
                 DWARF_LOC (v_regs_ptr + UC_MCONTEXT_VREGS_VRSAVE, 0);
               c->dwarf.loc[UNW_PPC64_VSCR] =
@@ -435,10 +687,13 @@ unw_step (unw_cursor_t * cursor)
               c->dwarf.loc[UNW_PPC64_VRSAVE] = DWARF_NULL_LOC;
               c->dwarf.loc[UNW_PPC64_VSCR] = DWARF_NULL_LOC;
             }
-          ret = 1;
-        }
+
+      c->dwarf.pi_valid = 0;
+      c->dwarf.use_prev_instr = 0;
+      ret = 1;
     }
 
+step_done:
   if (c->dwarf.ip == 0)
     {
       /* Unless the cursor or stack is corrupt or uninitialized,
@@ -460,7 +715,8 @@ unw_step (unw_cursor_t * cursor)
     uint32_t toc_save = (as->abi == UNW_PPC64_ABI_ELFv2)? 24 : 40;
     int32_t inst;
 
-    if (fetch32 (as, a, &ip, &inst, arg) >= 0
+    if ((ip & 0x3) == 0
+	&& fetch32 (as, a, &ip, &inst, arg) >= 0
 	&& (uint32_t)inst == (0xE8410000U + toc_save))
       {
 	// @plt call, restoring R2 from CFA+toc_save

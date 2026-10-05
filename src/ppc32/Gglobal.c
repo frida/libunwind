@@ -68,12 +68,6 @@ HIDDEN const uint8_t dwarf_to_unw_regnum_map[DWARF_REGNUM_MAP_LENGTH] =
         [UNW_PPC32_R30]=UNW_PPC32_R30,
         [UNW_PPC32_R31]=UNW_PPC32_R31,
 
-        [UNW_PPC32_CTR]=UNW_PPC32_CTR,
-        [UNW_PPC32_XER]=UNW_PPC32_XER,
-        [UNW_PPC32_CCR]=UNW_PPC32_CCR,
-        [UNW_PPC32_LR]=UNW_PPC32_LR,
-        [UNW_PPC32_FPSCR]=UNW_PPC32_FPSCR,
-
         [UNW_PPC32_F0]=UNW_PPC32_F0,
         [UNW_PPC32_F1]=UNW_PPC32_F1,
         [UNW_PPC32_F2]=UNW_PPC32_F2,
@@ -106,21 +100,30 @@ HIDDEN const uint8_t dwarf_to_unw_regnum_map[DWARF_REGNUM_MAP_LENGTH] =
         [UNW_PPC32_F29]=UNW_PPC32_F29,
         [UNW_PPC32_F30]=UNW_PPC32_F30,
         [UNW_PPC32_F31]=UNW_PPC32_F31,
+
+        [UNW_PPC32_LR]=UNW_PPC32_LR,
+        [UNW_PPC32_CTR]=UNW_PPC32_CTR,
+
+        [UNW_PPC32_CCR]=UNW_PPC32_CCR,
+
+        [UNW_PPC32_XER]=UNW_PPC32_XER,
 };
 
 HIDDEN void
 tdep_init (void)
 {
   intrmask_t saved_mask;
+  intrmask_t full_mask;
+  sigfillset (&full_mask);
 
-  sigfillset (&unwi_full_mask);
-
-  lock_acquire (&ppc32_lock, saved_mask);
+  SIGPROCMASK (SIG_SETMASK, &full_mask, &saved_mask);
+  mutex_lock (&ppc32_lock);
   {
     if (atomic_load(&tdep_init_done))
       /* another thread else beat us to it... */
       goto out;
 
+    sigfillset (&unwi_full_mask);
     mi_init ();
 
     dwarf_init ();
@@ -131,5 +134,6 @@ tdep_init (void)
     atomic_store(&tdep_init_done, 1); /* signal that we're initialized... */
   }
  out:
-  lock_release (&ppc32_lock, saved_mask);
+  mutex_unlock (&ppc32_lock);
+  SIGPROCMASK (SIG_SETMASK, &saved_mask, NULL);
 }

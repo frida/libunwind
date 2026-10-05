@@ -47,13 +47,12 @@ typedef struct
 
 static const unw_tdep_frame_t empty_frame = { 0, UNW_X86_64_FRAME_OTHER, -1, -1, 0, -1, -1 };
 static define_lock (trace_init_lock);
-static struct mempool trace_cache_pool;
-#ifdef HAVE___CACHE_PER_THREAD
 static pthread_once_t trace_cache_once = PTHREAD_ONCE_INIT;
 static sig_atomic_t trace_cache_once_happen;
 static pthread_key_t trace_cache_key;
-static _Thread_local  unw_trace_cache_t *tls_cache;
-static _Thread_local  int tls_cache_destroyed;
+static struct mempool trace_cache_pool;
+static thread_local  unw_trace_cache_t *tls_cache;
+static thread_local  int tls_cache_destroyed;
 
 /* Free memory for a thread's trace cache. */
 static void
@@ -70,12 +69,12 @@ trace_cache_free (void *arg)
   }
   tls_cache_destroyed = 1;
   tls_cache = NULL;
-  munmap (cache->frames, (1u << cache->log_size) * sizeof(unw_tdep_frame_t));
+  mi_munmap (cache->frames, (1ULL << cache->log_size) * sizeof(unw_tdep_frame_t));
   mempool_free (&trace_cache_pool, cache);
   Debug(5, "freed cache %p\n", cache);
 }
 
-/* Initialise frame tracing for threaded use. */
+/* Initialize frame tracing for threaded use. */
 static void
 trace_cache_init_once (void)
 {
@@ -83,7 +82,6 @@ trace_cache_init_once (void)
   mempool_init (&trace_cache_pool, sizeof (unw_trace_cache_t), 0);
   trace_cache_once_happen = 1;
 }
-#endif
 
 static unw_tdep_frame_t *
 trace_cache_buckets (size_t n)
@@ -99,15 +97,14 @@ trace_cache_buckets (size_t n)
   return frames;
 }
 
-/* Allocate and initialise hash table for frame cache lookups.
-   Returns the cache initialised with (1u << HASH_LOW_BITS) hash
+/* Allocate and initialize hash table for frame cache lookups.
+   Returns the cache initialized with (1ULL << HASH_LOW_BITS) hash
    buckets, or NULL if there was a memory allocation problem. */
 static unw_trace_cache_t *
 trace_cache_create (void)
 {
   unw_trace_cache_t *cache;
 
-#ifdef HAVE___CACHE_PER_THREAD
   if (tls_cache_destroyed)
   {
     /* The current thread is in the process of exiting. Don't recreate
@@ -116,7 +113,6 @@ trace_cache_create (void)
              "thread-locals are being deallocated\n");
     return NULL;
   }
-#endif
 
   if (! (cache = mempool_alloc(&trace_cache_pool)))
   {
@@ -124,7 +120,7 @@ trace_cache_create (void)
     return NULL;
   }
 
-  if (! (cache->frames = trace_cache_buckets(1u << HASH_MIN_BITS)))
+  if (! (cache->frames = trace_cache_buckets(1ULL << HASH_MIN_BITS)))
   {
     Debug(5, "failed to allocate buckets\n");
     mempool_free(&trace_cache_pool, cache);
@@ -134,9 +130,7 @@ trace_cache_create (void)
   cache->log_size = HASH_MIN_BITS;
   cache->used = 0;
   cache->dtor_count = 0;
-#ifdef HAVE___CACHE_PER_THREAD
   tls_cache_destroyed = 0;  /* Paranoia: should already be 0. */
-#endif
   Debug(5, "allocated cache %p\n", cache);
   return cache;
 }
@@ -146,9 +140,9 @@ trace_cache_create (void)
 static int
 trace_cache_expand (unw_trace_cache_t *cache)
 {
-  size_t old_size = (1u << cache->log_size);
+  size_t old_size = (1ULL << cache->log_size);
   size_t new_log_size = cache->log_size + 2;
-  unw_tdep_frame_t *new_frames = trace_cache_buckets (1u << new_log_size);
+  unw_tdep_frame_t *new_frames = trace_cache_buckets (1ULL << new_log_size);
 
   if (unlikely(! new_frames))
   {
@@ -157,7 +151,7 @@ trace_cache_expand (unw_trace_cache_t *cache)
   }
 
   Debug(5, "expanded cache from 2^%lu to 2^%lu buckets\n", cache->log_size, new_log_size);
-  munmap(cache->frames, old_size * sizeof(unw_tdep_frame_t));
+  mi_munmap(cache->frames, old_size * sizeof(unw_tdep_frame_t));
   cache->frames = new_frames;
   cache->log_size = new_log_size;
   cache->used = 0;
@@ -186,7 +180,6 @@ trace_cache_get_unthreaded (void)
 static unw_trace_cache_t *
 trace_cache_get (void)
 {
-#ifdef HAVE___CACHE_PER_THREAD
   unw_trace_cache_t *cache;
   if (likely (pthread_once != NULL))
   {
@@ -205,13 +198,12 @@ trace_cache_get (void)
     return cache;
   }
   else
-#endif
   {
     return trace_cache_get_unthreaded();
   }
 }
 
-/* Initialise frame properties for address cache slot F at address
+/* Initialize frame properties for address cache slot F at address
    RIP using current CFA, RBP and RSP values.  Modifies CURSOR to
    that location, performs one unw_step(), and fills F with what
    was discovered about the location.  Returns F.
@@ -228,7 +220,7 @@ trace_init_addr (unw_tdep_frame_t *f,
   struct dwarf_cursor *d = &c->dwarf;
   int ret = -UNW_EINVAL;
 
-  /* Initialise frame properties: unknown, not last. */
+  /* Initialize frame properties: unknown, not last. */
   f->virtual_address = rip;
   f->frame_type = UNW_X86_64_FRAME_OTHER;
   f->last_frame = 0;
@@ -292,7 +284,7 @@ trace_lookup (unw_cursor_t *cursor,
      important the hash table does not fill up, or performance falls
      off the cliff. */
   uint64_t i, addr;
-  uint64_t cache_size = 1u << cache->log_size;
+  uint64_t cache_size = 1ULL << cache->log_size;
   uint64_t slot = ((rip * 0x9e3779b97f4a7c16) >> 43) & (cache_size-1);
   unw_tdep_frame_t *frame;
 
@@ -327,7 +319,7 @@ trace_lookup (unw_cursor_t *cursor,
     if (unlikely(trace_cache_expand (cache) < 0))
       return NULL;
 
-    cache_size = 1u << cache->log_size;
+    cache_size = 1ULL << cache->log_size;
     slot = ((rip * 0x9e3779b97f4a7c16) >> 43) & (cache_size-1);
     frame = &cache->frames[slot];
     addr = frame->virtual_address;
@@ -412,9 +404,9 @@ tdep_trace (unw_cursor_t *cursor, void **buffer, int *size)
   int maxdepth = 0;
   int depth = 0;
   int ret;
-  int validate = 0;
+  int validate UNUSED = 0;
 
-  /* Check input parametres. */
+  /* Check input parameters. */
   if (unlikely(! cursor || ! buffer || ! size || (maxdepth = *size) <= 0))
     return -UNW_EINVAL;
 
@@ -485,6 +477,7 @@ tdep_trace (unw_cursor_t *cursor, void **buffer, int *size)
       /* Fall thru to standard processing after forcing validation. */
       if (d->as == unw_local_addr_space)
         dwarf_set_validate(d, 1);
+      FALLTHROUGH;
 
     case UNW_X86_64_FRAME_STANDARD:
       /* Advance standard traceable frame. */
@@ -545,8 +538,9 @@ tdep_trace (unw_cursor_t *cursor, void **buffer, int *size)
       /* We cannot trace through this frame, give up and tell the
          caller we had to stop.  Data collected so far may still be
          useful to the caller, so let it know how far we got.  */
-      ret = -UNW_ESTOPUNWIND;
-      break;
+      Debug (1, "returning UNW_ESTOPUNWIND, depth %d\n", depth);
+      *size = depth;
+      return -UNW_ESTOPUNWIND;
     }
 
     Debug (4, "new cfa 0x%lx rip 0x%lx rsp 0x%lx rbp 0x%lx\n",
@@ -560,9 +554,7 @@ tdep_trace (unw_cursor_t *cursor, void **buffer, int *size)
     buffer[depth++] = (void *) rip;
   }
 
-#if UNW_DEBUG
   Debug (1, "returning %d, depth %d\n", ret, depth);
-#endif
   *size = depth;
   return ret;
 }
