@@ -60,6 +60,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <stdio.h>
 #if defined(HAVE_THREADS_H)
 # include <threads.h>
+#else
+# define thread_local _Thread_local
 #endif
 
 #if defined(HAVE_SYS_SYSCALL_H)
