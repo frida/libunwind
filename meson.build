@@ -241,11 +241,6 @@ if not cc.has_function('_Unwind_Resume')
     endif
 endif
 
-# Ensure getcontext is available in all cases (i.e. as if it came from libc)
-if not cc.has_function('getcontext')
-    libc_deps += dependency('libucontext', required: not unw_remote_only)
-endif
-
 # Determine whether to build libunwind-coredump
 build_coredump = get_option('coredump').require(
     host_machine.system() != 'windows',
