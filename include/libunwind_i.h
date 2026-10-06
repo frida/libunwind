@@ -60,6 +60,10 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <stdio.h>
 #if defined(HAVE_THREADS_H)
 # include <threads.h>
+#elif defined(__GNUC__)
+# define thread_local __thread
+#else
+# define thread_local _Thread_local
 #endif
 
 #if defined(HAVE_SYS_SYSCALL_H)
