@@ -4,7 +4,7 @@ project(
     'cpp',
     version: '1.9.0-pre',
     meson_version: '>=0.61.0',
-    default_options: ['b_ndebug=if-release', 'c_std=c11', 'cpp_std=c++11'],
+    default_options: ['b_ndebug=if-release', 'c_std=gnu11,c11', 'cpp_std=c++11'],
 )
 
 fs = import('fs')
