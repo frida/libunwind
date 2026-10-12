@@ -16,6 +16,10 @@ if unw_remote_only and host_machine.system() == 'windows'
     subdir('remote/win')
 endif
 
+if host_machine.system() != 'windows' and not cc.check_header('stdatomic.h')
+    internal_inc += include_directories('compat-stdatomic')
+endif
+
 configure_file(output: 'config.h', configuration: cfg)
 # This variable must be set for Autotools-based code to build properly
 add_project_arguments('-DHAVE_CONFIG_H', language: ['c', 'cpp'])
