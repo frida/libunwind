@@ -372,7 +372,7 @@ unw_search_ia64_unwind_table (unw_addr_space_t as, unw_word_t ip,
 
 #ifndef UNW_REMOTE_ONLY
 
-# if defined(HAVE_DL_ITERATE_PHDR)
+# if defined(UNW_HAVE_DL_ITERATE_PHDR)
 #  include <link.h>
 #  include <stdlib.h>
 
@@ -647,7 +647,7 @@ HIDDEN int
 tdep_find_proc_info (unw_addr_space_t as, unw_word_t ip,
                      unw_proc_info_t *pi, int need_unwind_info, void *arg)
 {
-# if defined(HAVE_DL_ITERATE_PHDR)
+# if defined(UNW_HAVE_DL_ITERATE_PHDR)
   unw_dyn_info_t di, *dip = &di;
   intrmask_t saved_mask;
   int ret;

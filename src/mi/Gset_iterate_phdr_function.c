@@ -14,7 +14,7 @@ unw_set_iterate_phdr_function (unw_addr_space_t as, unw_iterate_phdr_func_t func
   if (function)
     as->iterate_phdr_function = function;
   else
-# if defined(HAVE_DL_ITERATE_PHDR)
+# if defined(UNW_HAVE_DL_ITERATE_PHDR)
     as->iterate_phdr_function = dl_iterate_phdr;
 # else
     as->iterate_phdr_function = NULL;

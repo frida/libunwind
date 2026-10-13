@@ -37,6 +37,12 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 
 #include "compiler.h"
 
+/* Set when either libc or our fallback provides dl_iterate_phdr().  */
+#if defined(HAVE_DL_ITERATE_PHDR) || defined(__ANDROID__) || \
+    defined(__PROSPERO__) || defined(__QNX__)
+# define UNW_HAVE_DL_ITERATE_PHDR 1
+#endif
+
 #if defined(HAVE___CACHE_PER_THREAD) && HAVE___CACHE_PER_THREAD
 #define UNWI_DEFAULT_CACHING_POLICY UNW_CACHE_PER_THREAD
 #else

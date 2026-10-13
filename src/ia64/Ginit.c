@@ -371,7 +371,7 @@ ia64_local_addr_space_init (void)
   local_addr_space.abi = ABI_HPUX;
 #endif
 #ifndef UNW_REMOTE_ONLY
-# if defined(HAVE_DL_ITERATE_PHDR)
+# if defined(UNW_HAVE_DL_ITERATE_PHDR)
   local_addr_space.iterate_phdr_function = dl_iterate_phdr;
 # endif
 #endif

@@ -181,7 +181,7 @@ x86_64_local_addr_space_init (void)
 {
   memset (&local_addr_space, 0, sizeof (local_addr_space));
 #ifndef UNW_REMOTE_ONLY
-# if defined(HAVE_DL_ITERATE_PHDR)
+# if defined(UNW_HAVE_DL_ITERATE_PHDR)
   local_addr_space.iterate_phdr_function = dl_iterate_phdr;
 # endif
 #endif

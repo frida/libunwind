@@ -207,7 +207,7 @@ mips_local_addr_space_init (void)
 #endif
   local_addr_space.addr_size = sizeof (void *);
 #ifndef UNW_REMOTE_ONLY
-# if defined(HAVE_DL_ITERATE_PHDR)
+# if defined(UNW_HAVE_DL_ITERATE_PHDR)
   local_addr_space.iterate_phdr_function = dl_iterate_phdr;
 # endif
 #endif
